@@ -17,25 +17,34 @@ export async function GET(): Promise<NextResponse<ApiResponse<ActiveCall[]>>> {
   }
 
   try {
-    const response = await fetch(
-      'https://api.retellai.com/v2/list-calls?filter_criteria=%7B%22call_status%22%3A%5B%22ongoing%22%5D%7D',
-      {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    )
+    // v2/list-calls is a POST endpoint with a JSON body
+    const response = await fetch('https://api.retellai.com/v2/list-calls', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        filter_criteria: { call_status: ['ongoing'] },
+        limit: 1000,
+        sort_order: 'descending',
+      }),
+    })
 
     if (!response.ok) {
-      throw new Error(`Retell API error: ${response.status}`)
+      const errorBody = await response.text().catch(() => '')
+      throw new Error(`Retell API error: ${response.status} ${errorBody}`)
     }
 
     const data = await response.json()
-    
+    const callsRaw: Record<string, unknown>[] = Array.isArray(data)
+      ? data
+      : Array.isArray((data as { calls?: unknown[] })?.calls)
+        ? ((data as { calls: Record<string, unknown>[] }).calls)
+        : []
+
     // Transform Retell API response to our ActiveCall type
-    const activeCalls: ActiveCall[] = (data || []).map((call: Record<string, unknown>) => ({
+    const activeCalls: ActiveCall[] = callsRaw.map((call: Record<string, unknown>) => ({
       id: call.call_id as string,
       callId: call.call_id as string,
       agentId: call.agent_id as string,

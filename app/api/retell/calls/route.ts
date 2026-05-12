@@ -45,23 +45,30 @@ export async function GET(): Promise<NextResponse<ApiResponse<CallsResponse>>> {
   }
 
   try {
-    // Fetch calls from Retell API
+    // Fetch calls from Retell API (v2/list-calls is a POST endpoint)
     const response = await fetch('https://api.retellai.com/v2/list-calls', {
-      method: 'GET',
+      method: 'POST',
       headers: {
         Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify({ limit: 1000, sort_order: 'descending' }),
     })
 
     if (!response.ok) {
-      throw new Error(`Retell API error: ${response.status}`)
+      const errorBody = await response.text().catch(() => '')
+      throw new Error(`Retell API error: ${response.status} ${errorBody}`)
     }
 
     const data = await response.json()
+    const callsRaw: Record<string, unknown>[] = Array.isArray(data)
+      ? data
+      : Array.isArray((data as { calls?: unknown[] })?.calls)
+        ? ((data as { calls: Record<string, unknown>[] }).calls)
+        : []
 
     // Transform Retell API response to our CallLog type
-    const calls: CallLog[] = (data || []).map((call: Record<string, unknown>) => ({
+    const calls: CallLog[] = callsRaw.map((call: Record<string, unknown>) => ({
       id: call.call_id as string,
       callId: call.call_id as string,
       agentId: call.agent_id as string,
