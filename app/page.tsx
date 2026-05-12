@@ -3,7 +3,12 @@
 import { useState } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DashboardHeader } from '@/components/dashboard/dashboard-header'
-import { StatsOverview } from '@/components/dashboard/stats-overview'
+import { BusinessKpis } from '@/components/dashboard/business-kpis'
+import { ConversionFunnel } from '@/components/dashboard/conversion-funnel'
+import { QualificationBreakdown } from '@/components/dashboard/qualification-breakdown'
+import { SourceAttribution } from '@/components/dashboard/source-attribution'
+import { AgentPerformance } from '@/components/dashboard/agent-performance'
+import { CostOverview } from '@/components/dashboard/cost-overview'
 import { CallVolumeChart } from '@/components/dashboard/call-volume-chart'
 import { SuccessRateChart } from '@/components/dashboard/success-rate-chart'
 import { DurationDistribution } from '@/components/dashboard/duration-distribution'
@@ -13,7 +18,7 @@ import { CallDetailSheet } from '@/components/dashboard/call-detail-sheet'
 import { LiveMonitor } from '@/components/dashboard/live-monitor'
 import { MobileBottomNav } from '@/components/dashboard/mobile-bottom-nav'
 import { useCalls } from '@/lib/hooks/use-calls'
-import type { CallLog } from '@/lib/types'
+import type { CallLogEnriched } from '@/lib/types'
 
 export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState('overview')
@@ -28,6 +33,8 @@ export default function DashboardPage() {
     dailyData,
     durationBuckets,
     heatmapData,
+    businessMetrics,
+    costSummary,
     isLoading,
     refresh,
   } = useCalls()
@@ -38,7 +45,7 @@ export default function DashboardPage() {
     setIsRefreshing(false)
   }
 
-  const handleCallSelect = (call: CallLog) => {
+  const handleCallSelect = (call: CallLogEnriched) => {
     setSelectedCallId(call.id)
     setIsSheetOpen(true)
   }
@@ -46,17 +53,11 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-background pb-20 md:pb-0">
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        {/* Header */}
         <DashboardHeader onRefresh={handleRefresh} isRefreshing={isRefreshing} />
 
-        {/* Main Content */}
         <main className="mt-6">
           {/* Desktop Tabs */}
-          <Tabs
-            value={activeTab}
-            onValueChange={setActiveTab}
-            className="hidden md:block"
-          >
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="hidden md:block">
             <TabsList>
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="calls">Call Logs</TabsTrigger>
@@ -70,10 +71,38 @@ export default function DashboardPage() {
             </TabsList>
 
             <TabsContent value="overview" className="mt-6 space-y-6">
-              {/* Stats Cards */}
-              <StatsOverview metrics={metrics} isLoading={isLoading} />
+              <BusinessKpis
+                metrics={metrics}
+                business={businessMetrics}
+                isLoading={isLoading}
+              />
 
-              {/* Charts Grid */}
+              <div className="grid gap-6 lg:grid-cols-3">
+                <div className="lg:col-span-2">
+                  <CostOverview cost={costSummary} isLoading={isLoading} />
+                </div>
+                <ConversionFunnel
+                  funnel={businessMetrics?.funnel ?? null}
+                  isLoading={isLoading}
+                />
+              </div>
+
+              <div className="grid gap-6 lg:grid-cols-2">
+                <QualificationBreakdown
+                  data={businessMetrics?.qualifications ?? []}
+                  isLoading={isLoading}
+                />
+                <SourceAttribution
+                  data={businessMetrics?.sources ?? []}
+                  isLoading={isLoading}
+                />
+              </div>
+
+              <AgentPerformance
+                agents={businessMetrics?.agents ?? []}
+                isLoading={isLoading}
+              />
+
               <div className="grid gap-6 lg:grid-cols-2">
                 <CallVolumeChart data={hourlyData} isLoading={isLoading} />
                 <SuccessRateChart data={dailyData} isLoading={isLoading} />
@@ -102,13 +131,32 @@ export default function DashboardPage() {
           <div className="md:hidden space-y-6">
             {activeTab === 'overview' && (
               <>
-                <StatsOverview metrics={metrics} isLoading={isLoading} />
-                <div className="space-y-6">
-                  <CallVolumeChart data={hourlyData} isLoading={isLoading} />
-                  <SuccessRateChart data={dailyData} isLoading={isLoading} />
-                  <DurationDistribution data={durationBuckets} isLoading={isLoading} />
-                  <PeakHoursHeatmap data={heatmapData} isLoading={isLoading} />
-                </div>
+                <BusinessKpis
+                  metrics={metrics}
+                  business={businessMetrics}
+                  isLoading={isLoading}
+                />
+                <CostOverview cost={costSummary} isLoading={isLoading} />
+                <ConversionFunnel
+                  funnel={businessMetrics?.funnel ?? null}
+                  isLoading={isLoading}
+                />
+                <QualificationBreakdown
+                  data={businessMetrics?.qualifications ?? []}
+                  isLoading={isLoading}
+                />
+                <SourceAttribution
+                  data={businessMetrics?.sources ?? []}
+                  isLoading={isLoading}
+                />
+                <AgentPerformance
+                  agents={businessMetrics?.agents ?? []}
+                  isLoading={isLoading}
+                />
+                <CallVolumeChart data={hourlyData} isLoading={isLoading} />
+                <SuccessRateChart data={dailyData} isLoading={isLoading} />
+                <DurationDistribution data={durationBuckets} isLoading={isLoading} />
+                <PeakHoursHeatmap data={heatmapData} isLoading={isLoading} />
               </>
             )}
 
@@ -125,10 +173,8 @@ export default function DashboardPage() {
         </main>
       </div>
 
-      {/* Mobile Bottom Navigation */}
       <MobileBottomNav activeTab={activeTab} onTabChange={setActiveTab} />
 
-      {/* Call Detail Sheet */}
       <CallDetailSheet
         callId={selectedCallId}
         open={isSheetOpen}

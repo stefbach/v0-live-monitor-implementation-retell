@@ -1,7 +1,19 @@
 'use client'
 
 import useSWR from 'swr'
-import type { CallLog, CallMetrics, HourlyCallData, DailyCallData, DurationBucket, HeatmapCell, ActiveCall, ApiResponse } from '@/lib/types'
+import type {
+  CallLogEnriched,
+  CallMetrics,
+  HourlyCallData,
+  DailyCallData,
+  DurationBucket,
+  HeatmapCell,
+  ActiveCallEnriched,
+  ApiResponse,
+  BusinessMetrics,
+  CostSummary,
+  Lead,
+} from '@/lib/types'
 
 const fetcher = async <T>(url: string): Promise<T> => {
   const res = await fetch(url)
@@ -13,12 +25,15 @@ const fetcher = async <T>(url: string): Promise<T> => {
 }
 
 interface CallsData {
-  calls: CallLog[]
+  calls: CallLogEnriched[]
   metrics: CallMetrics
   hourlyData: HourlyCallData[]
   dailyData: DailyCallData[]
   durationBuckets: DurationBucket[]
   heatmapData: HeatmapCell[]
+  businessMetrics: BusinessMetrics | null
+  costSummary: CostSummary
+  agentNames: Record<string, string>
 }
 
 export function useCalls() {
@@ -26,7 +41,7 @@ export function useCalls() {
     '/api/retell/calls',
     fetcher,
     {
-      refreshInterval: 30000, // Refresh every 30 seconds
+      refreshInterval: 30000,
       revalidateOnFocus: true,
     }
   )
@@ -38,6 +53,9 @@ export function useCalls() {
     dailyData: data?.dailyData ?? [],
     durationBuckets: data?.durationBuckets ?? [],
     heatmapData: data?.heatmapData ?? [],
+    businessMetrics: data?.businessMetrics ?? null,
+    costSummary: data?.costSummary ?? null,
+    agentNames: data?.agentNames ?? {},
     isLoading,
     isError: error,
     refresh: mutate,
@@ -45,11 +63,11 @@ export function useCalls() {
 }
 
 export function useActiveCalls() {
-  const { data, error, isLoading, mutate } = useSWR<ActiveCall[]>(
+  const { data, error, isLoading, mutate } = useSWR<ActiveCallEnriched[]>(
     '/api/retell/active-calls',
     fetcher,
     {
-      refreshInterval: 5000, // Refresh every 5 seconds for live data
+      refreshInterval: 5000,
       revalidateOnFocus: true,
     }
   )
@@ -63,10 +81,9 @@ export function useActiveCalls() {
 }
 
 export function useCallDetail(callId: string | null) {
-  const { data, error, isLoading } = useSWR<CallLog | null>(
-    callId ? `/api/retell/call/${callId}` : null,
-    fetcher
-  )
+  const { data, error, isLoading } = useSWR<
+    (CallLogEnriched & { fullLead?: Lead | null }) | null
+  >(callId ? `/api/retell/call/${callId}` : null, fetcher)
 
   return {
     call: data ?? null,
@@ -76,14 +93,16 @@ export function useCallDetail(callId: string | null) {
 }
 
 export function useHealthStatus() {
-  const { data, error, isLoading } = useSWR<ApiResponse<{ status: string; apiKeyConfigured: boolean }>>(
+  const { data, error, isLoading } = useSWR<
+    ApiResponse<{ status: string; apiKeyConfigured: boolean }>
+  >(
     '/api/retell/health',
     async (url: string) => {
       const res = await fetch(url)
       return res.json()
     },
     {
-      refreshInterval: 60000, // Check every minute
+      refreshInterval: 60000,
     }
   )
 

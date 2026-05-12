@@ -97,3 +97,145 @@ export interface RetellHealthStatus {
   lastCheck: string
   message?: string
 }
+
+// ─── Leads / CRM ────────────────────────────────────────────────────────────
+
+export type Qualification =
+  | 'NOUVEAU DOSSIER'
+  | 'PAS INTERESSE'
+  | 'RDV MEDECIN'
+  | 'FAUX NUMERO'
+  | 'PAS DE REPONSE'
+  | 'FOLLOW UP'
+  | 'TRANSFERRED_TO_ISABELLE'
+  | string
+
+export interface Lead {
+  id: string
+  nom: string | null
+  email: string | null
+  numero_telephone: string | null
+  poids: number | null
+  taille: number | null
+  bmi: number | null
+  source_lead: string | null
+  form_facebook: string | null
+  agent: string | null
+  date_rdv: string | null
+  date_creation: string | null
+  qualification: Qualification | null
+  note: string | null
+  rappel_rdv: string | null
+  call_count: number | null
+  last_qualification_update: string | null
+  first_mail: string | null
+  second_mail: string | null
+  allergies: string | null
+  anesthesia_allergies: string | null
+  current_medications: string | null
+  past_surgeries: string | null
+  nhs_wmp_status: string | null
+  nhs_wmp_details: string | null
+  other_chronic_conditions: string | null
+  patient_dob: string | null
+  email_sent: boolean | null
+  last_call_datetime: string | null
+  call_1_note: string | null
+  call_2_note: string | null
+  call_3_note: string | null
+}
+
+// Patient details surfaced alongside a call (sub-projection of Lead)
+export interface LeadSummary {
+  id: string
+  nom: string | null
+  email: string | null
+  numero_telephone: string | null
+  bmi: number | null
+  poids: number | null
+  taille: number | null
+  patient_dob: string | null
+  qualification: Qualification | null
+  source_lead: string | null
+  call_count: number | null
+  date_rdv: string | null
+  rappel_rdv: string | null
+  last_call_datetime: string | null
+}
+
+// ─── Business / Cost metrics ────────────────────────────────────────────────
+
+export interface QualificationBreakdown {
+  qualification: Qualification
+  count: number
+  percent: number
+}
+
+export interface SourceBreakdown {
+  source: string
+  total: number
+  rdv: number
+  conversionRate: number // % of source-leads ending in RDV MEDECIN
+}
+
+export interface AgentPerformance {
+  agentId: string
+  agentName: string
+  calls: number
+  rdv: number
+  rdvRate: number // % rdv / calls
+  avgDuration: number // seconds
+  totalCost: number // cents
+}
+
+export interface ConversionFunnel {
+  leads: number
+  contacted: number
+  interested: number // anything not in {PAS INTERESSE, FAUX NUMERO}
+  rdvBooked: number
+  contactRate: number
+  interestRate: number
+  bookingRate: number
+}
+
+export interface CostPoint {
+  date: string // YYYY-MM-DD
+  cost: number // cents
+  calls: number
+}
+
+export interface CostSummary {
+  totalCost: number // cents, period total
+  avgCostPerCall: number // cents
+  costPerRdv: number // cents
+  todayCost: number // cents
+  weekCost: number // cents
+  monthCost: number // cents
+  daily: CostPoint[]
+}
+
+export interface BusinessMetrics {
+  totalLeads: number
+  newLeadsToday: number
+  rdvThisWeek: number
+  rdvToday: number
+  rdvRate: number // RDV MEDECIN / contacted (%)
+  contactRate: number // contacted / total leads (%)
+  avgCallsBeforeRdv: number
+  qualifications: QualificationBreakdown[]
+  sources: SourceBreakdown[]
+  agents: AgentPerformance[]
+  funnel: ConversionFunnel
+}
+
+// ─── Enriched call shape (Retell + Lead + cost + agent name) ────────────────
+
+export interface CallLogEnriched extends CallLog {
+  cost: number | null // cents (Retell combined_cost)
+  lead: LeadSummary | null
+}
+
+export interface ActiveCallEnriched extends ActiveCall {
+  lead: LeadSummary | null
+}
+
