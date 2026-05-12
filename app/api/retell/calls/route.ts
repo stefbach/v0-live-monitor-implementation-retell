@@ -68,25 +68,28 @@ export async function GET(): Promise<NextResponse<ApiResponse<CallsResponse>>> {
         : []
 
     // Transform Retell API response to our CallLog type
-    const calls: CallLog[] = callsRaw.map((call: Record<string, unknown>) => ({
-      id: call.call_id as string,
-      callId: call.call_id as string,
-      agentId: call.agent_id as string,
-      agentName: (call.agent_name as string) || 'Unknown Agent',
-      status: mapRetellStatus(call.call_status as string),
-      direction: call.direction === 'inbound' ? 'inbound' : 'outbound',
-      duration: call.end_timestamp
-        ? Math.floor(
-            (new Date(call.end_timestamp as string).getTime() -
-              new Date(call.start_timestamp as string).getTime()) /
-              1000
-          )
-        : 0,
-      startTime: call.start_timestamp as string,
-      endTime: (call.end_timestamp as string) || null,
-      fromNumber: (call.from_number as string) || '',
-      toNumber: (call.to_number as string) || '',
-    }))
+    const calls: CallLog[] = callsRaw.map((call: Record<string, unknown>) => {
+      const startTs = call.start_timestamp as number | string | undefined
+      const endTs = call.end_timestamp as number | string | undefined
+      const startMs = startTs != null ? new Date(startTs).getTime() : NaN
+      const endMs = endTs != null ? new Date(endTs).getTime() : NaN
+      return {
+        id: call.call_id as string,
+        callId: call.call_id as string,
+        agentId: call.agent_id as string,
+        agentName: (call.agent_name as string) || 'Unknown Agent',
+        status: mapRetellStatus(call.call_status as string),
+        direction: call.direction === 'inbound' ? 'inbound' : 'outbound',
+        duration:
+          Number.isFinite(endMs) && Number.isFinite(startMs)
+            ? Math.floor((endMs - startMs) / 1000)
+            : 0,
+        startTime: Number.isFinite(startMs) ? new Date(startMs).toISOString() : '',
+        endTime: Number.isFinite(endMs) ? new Date(endMs).toISOString() : null,
+        fromNumber: (call.from_number as string) || '',
+        toNumber: (call.to_number as string) || '',
+      }
+    })
 
     const metrics = calculateMetrics(calls)
 

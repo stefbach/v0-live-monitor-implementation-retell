@@ -44,20 +44,24 @@ export async function GET(): Promise<NextResponse<ApiResponse<ActiveCall[]>>> {
         : []
 
     // Transform Retell API response to our ActiveCall type
-    const activeCalls: ActiveCall[] = callsRaw.map((call: Record<string, unknown>) => ({
-      id: call.call_id as string,
-      callId: call.call_id as string,
-      agentId: call.agent_id as string,
-      agentName: (call.agent_name as string) || 'Unknown Agent',
-      direction: call.direction === 'inbound' ? 'inbound' : 'outbound',
-      startTime: call.start_timestamp as string,
-      fromNumber: (call.from_number as string) || '',
-      toNumber: (call.to_number as string) || '',
-      currentDuration: Math.floor(
-        (Date.now() - new Date(call.start_timestamp as string).getTime()) / 1000
-      ),
-      status: 'active' as const,
-    }))
+    const activeCalls: ActiveCall[] = callsRaw.map((call: Record<string, unknown>) => {
+      const startTs = call.start_timestamp as number | string | undefined
+      const startMs = startTs != null ? new Date(startTs).getTime() : NaN
+      return {
+        id: call.call_id as string,
+        callId: call.call_id as string,
+        agentId: call.agent_id as string,
+        agentName: (call.agent_name as string) || 'Unknown Agent',
+        direction: call.direction === 'inbound' ? 'inbound' : 'outbound',
+        startTime: Number.isFinite(startMs) ? new Date(startMs).toISOString() : '',
+        fromNumber: (call.from_number as string) || '',
+        toNumber: (call.to_number as string) || '',
+        currentDuration: Number.isFinite(startMs)
+          ? Math.floor((Date.now() - startMs) / 1000)
+          : 0,
+        status: 'active' as const,
+      }
+    })
 
     return NextResponse.json({
       data: activeCalls,
