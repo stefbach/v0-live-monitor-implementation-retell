@@ -1,8 +1,8 @@
-import { getAnthropic, INSIGHTS_MODEL } from '@/lib/llm'
-import { INSIGHTS_SYSTEM_PROMPT, INSIGHTS_TOOL, buildUserMessage } from './prompts'
+import { getDeepSeek, DEEPSEEK_MODEL } from '@/lib/llm'
+import { buildSystemPrompt, INSIGHTS_TOOL, buildUserMessage } from './prompts'
 import type { InsightsCallInput, InsightsResult } from './types'
 
-const MAX_CALLS_TO_LLM = 400 // budget guard
+const MAX_CALLS_TO_LLM = 400 // safety cap
 
 interface GenerateArgs {
   calls: InsightsCallInput[]
@@ -11,7 +11,8 @@ interface GenerateArgs {
 
 function selectCalls(calls: InsightsCallInput[]): InsightsCallInput[] {
   if (calls.length <= MAX_CALLS_TO_LLM) return calls
-  // Priority: keep all RDV (precious signal), all PAS INTERESSE, then sample rest
+  // Priority: keep all RDV (precious signal), all PAS INTERESSE up to 60,
+  // then fill the rest in chronological order.
   const rdv = calls.filter((c) => c.qualification === 'RDV MEDECIN')
   const lost = calls.filter((c) => c.qualification === 'PAS INTERESSE')
   const rest = calls.filter(
@@ -68,15 +69,34 @@ function aggregateStats(calls: InsightsCallInput[]) {
   }
 }
 
+// DeepSeek's function-calling sometimes returns slightly malformed JSON
+// (trailing commas, unescaped quotes inside strings). Try lenient repair
+// before giving up.
+function parseToolArguments(raw: string): Record<string, unknown> {
+  try {
+    return JSON.parse(raw) as Record<string, unknown>
+  } catch {
+    // Strip trailing commas before ] or }
+    const cleaned = raw.replace(/,(\s*[}\]])/g, '$1')
+    try {
+      return JSON.parse(cleaned) as Record<string, unknown>
+    } catch {
+      throw new Error(
+        'Le LLM a renvoyé un JSON invalide. Réessaie en cliquant "Re-générer".'
+      )
+    }
+  }
+}
+
 export async function generateInsights({
   calls,
   periodLabel,
 }: GenerateArgs): Promise<InsightsResult> {
   const startedAt = Date.now()
-  const anthropic = getAnthropic()
-  if (!anthropic) {
+  const client = getDeepSeek()
+  if (!client) {
     throw new Error(
-      'ANTHROPIC_API_KEY is not configured. Add it as an environment variable on Vercel.'
+      "DEEPSEEK_API_KEY n'est pas configurée. Ajoute-la dans les variables d'environnement Vercel puis redéploie."
     )
   }
 
@@ -86,7 +106,6 @@ export async function generateInsights({
   const selected = selectCalls(callsWithSummary)
   const stats = aggregateStats(calls)
 
-  // Build a compact JSON for the LLM (drop nulls, trim summary to 600 chars).
   const compact = selected.map((c) => ({
     id: c.call_id,
     qualification: c.qualification ?? 'UNKNOWN',
@@ -108,26 +127,30 @@ export async function generateInsights({
     callsJson: JSON.stringify(compact),
   })
 
-  const response = await anthropic.messages.create({
-    model: INSIGHTS_MODEL,
-    max_tokens: 4000,
-    system: INSIGHTS_SYSTEM_PROMPT,
-    tools: [INSIGHTS_TOOL],
-    tool_choice: { type: 'tool', name: 'emit_insights' },
+  const completion = await client.chat.completions.create({
+    model: DEEPSEEK_MODEL,
     messages: [
-      {
-        role: 'user',
-        content: userMessage,
-      },
+      { role: 'system', content: buildSystemPrompt() },
+      { role: 'user', content: userMessage },
     ],
+    tools: [INSIGHTS_TOOL],
+    tool_choice: { type: 'function', function: { name: 'emit_insights' } },
+    max_tokens: 4000,
+    temperature: 0.3,
   })
 
-  const toolUse = response.content.find((b) => b.type === 'tool_use')
-  if (!toolUse || toolUse.type !== 'tool_use') {
-    throw new Error('LLM did not return structured insights (no tool_use block).')
+  const message = completion.choices?.[0]?.message
+  const toolCall = message?.tool_calls?.[0]
+  if (!toolCall || toolCall.type !== 'function') {
+    throw new Error(
+      "Le LLM n'a pas appelé l'outil structuré. Réessaie ou contacte l'équipe technique."
+    )
   }
 
-  const insights = toolUse.input as Omit<InsightsResult, 'meta'>
+  const insights = parseToolArguments(toolCall.function.arguments) as Omit<
+    InsightsResult,
+    'meta'
+  >
 
   return {
     ...insights,
@@ -136,7 +159,7 @@ export async function generateInsights({
       calls_analysed: calls.length,
       calls_with_summary: callsWithSummary.length,
       period_label: periodLabel,
-      model: INSIGHTS_MODEL,
+      model: DEEPSEEK_MODEL,
       cached: false,
       elapsed_ms: Date.now() - startedAt,
     },

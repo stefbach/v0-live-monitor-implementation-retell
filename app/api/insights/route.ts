@@ -3,7 +3,7 @@ import { generateInsights } from '@/lib/insights/generate'
 import { getCached, makeCacheKey, setCached } from '@/lib/insights/cache'
 import type { InsightsRequest, InsightsResult } from '@/lib/insights/types'
 import type { ApiResponse } from '@/lib/types'
-import { anthropicConfigured } from '@/lib/llm'
+import { deepseekConfigured } from '@/lib/llm'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60 // seconds — LLM may take 20-40s
@@ -11,12 +11,12 @@ export const maxDuration = 60 // seconds — LLM may take 20-40s
 export async function POST(
   request: Request
 ): Promise<NextResponse<ApiResponse<InsightsResult | null>>> {
-  if (!anthropicConfigured()) {
+  if (!deepseekConfigured()) {
     return NextResponse.json(
       {
         data: null,
         error:
-          'ANTHROPIC_API_KEY n\'est pas configurée. Ajoutez-la dans les variables d\'environnement Vercel.',
+          "DEEPSEEK_API_KEY n'est pas configurée. Ajoute-la dans les variables d'environnement Vercel puis redéploie.",
         timestamp: new Date().toISOString(),
       },
       { status: 503 }
