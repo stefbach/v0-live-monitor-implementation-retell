@@ -16,6 +16,7 @@ import { EligibilityPipeline } from '@/components/dashboard/eligibility-pipeline
 import { DurationHistogram } from '@/components/dashboard/duration-histogram'
 import { VerbatimPanel } from '@/components/dashboard/verbatim-panel'
 import { AgentPerformance } from '@/components/dashboard/agent-performance'
+import { InsightsPanel } from '@/components/dashboard/ai-insights/insights-panel'
 import { CallLogsTable } from '@/components/dashboard/call-logs-table'
 import { CallDetailSheet } from '@/components/dashboard/call-detail-sheet'
 import { LiveMonitor } from '@/components/dashboard/live-monitor'
@@ -64,6 +65,9 @@ export default function DashboardPage() {
           <Tabs value={activeTab} onValueChange={setActiveTab} className="hidden md:block">
             <TabsList>
               <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="insights" className="gap-1.5">
+                <span className="text-violet-400">✨</span> AI Insights
+              </TabsTrigger>
               <TabsTrigger value="calls">Call Logs</TabsTrigger>
               <TabsTrigger value="live" className="gap-2">
                 Live Monitor
@@ -129,6 +133,10 @@ export default function DashboardPage() {
               />
             </TabsContent>
 
+            <TabsContent value="insights" className="mt-6">
+              <InsightsPanel filteredCalls={filteredCalls} />
+            </TabsContent>
+
             <TabsContent value="calls" className="mt-6">
               <CallLogsTable
                 calls={filteredCalls}
@@ -187,6 +195,8 @@ export default function DashboardPage() {
                 />
               </>
             )}
+
+            {activeTab === 'insights' && <InsightsPanel filteredCalls={filteredCalls} />}
 
             {activeTab === 'calls' && (
               <CallLogsTable
