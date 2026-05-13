@@ -1,43 +1,71 @@
 'use client'
 
 import useSWR from 'swr'
+import { useMemo } from 'react'
 import type {
   CallLogEnriched,
-  CallMetrics,
-  HourlyCallData,
-  DailyCallData,
-  DurationBucket,
-  HeatmapCell,
   ActiveCallEnriched,
   ApiResponse,
-  BusinessMetrics,
-  CostSummary,
   Lead,
+  CallMetrics,
+  BusinessMetrics,
+  DashboardFilters,
 } from '@/lib/types'
+import { applyFilters } from '@/lib/filters'
+import { useFiltersStore } from '@/lib/stores/filters-store'
+import { computeBusinessMetrics } from '@/lib/leads'
 
 const fetcher = async <T>(url: string): Promise<T> => {
   const res = await fetch(url)
-  if (!res.ok) {
-    throw new Error(`API error: ${res.status}`)
-  }
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
   const json = await res.json()
   return json.data
 }
 
-interface CallsData {
+interface RawCallsData {
   calls: CallLogEnriched[]
-  metrics: CallMetrics
-  hourlyData: HourlyCallData[]
-  dailyData: DailyCallData[]
-  durationBuckets: DurationBucket[]
-  heatmapData: HeatmapCell[]
-  businessMetrics: BusinessMetrics | null
-  costSummary: CostSummary
+  leads: Lead[]
   agentNames: Record<string, string>
 }
 
-export function useCalls() {
-  const { data, error, isLoading, mutate } = useSWR<CallsData>(
+export interface DashboardData {
+  allCalls: CallLogEnriched[]
+  filteredCalls: CallLogEnriched[]
+  leads: Lead[]
+  agentNames: Record<string, string>
+  callMetrics: CallMetrics
+  businessMetrics: BusinessMetrics | null
+  filters: DashboardFilters
+  isLoading: boolean
+  isError: unknown
+  refresh: () => Promise<unknown>
+}
+
+function buildCallMetrics(calls: CallLogEnriched[]): CallMetrics {
+  const total = calls.length
+  const successful = calls.filter((c) => c.lead?.qualification === 'RDV MEDECIN').length
+  const failed = calls.filter((c) => c.status === 'failed').length
+  const noAnswer = calls.filter((c) => !c.answered).length
+  const busy = calls.filter((c) => c.status === 'busy').length
+  const active = calls.filter((c) => c.status === 'active').length
+  const totalDuration = calls.reduce((s, c) => s + c.duration, 0)
+  return {
+    totalCalls: total,
+    successfulCalls: successful,
+    failedCalls: failed,
+    noAnswerCalls: noAnswer,
+    busyCalls: busy,
+    successRate: total > 0 ? (successful / total) * 100 : 0,
+    averageDuration: total > 0 ? totalDuration / total : 0,
+    totalDuration,
+    activeCalls: active,
+  }
+}
+
+export function useDashboardData(): DashboardData {
+  const filters = useFiltersStore((s) => s.filters)
+
+  const { data, error, isLoading, mutate } = useSWR<RawCallsData>(
     '/api/retell/calls',
     fetcher,
     {
@@ -46,20 +74,45 @@ export function useCalls() {
     }
   )
 
+  const allCalls = data?.calls ?? []
+  const leads = data?.leads ?? []
+  const agentNames = data?.agentNames ?? {}
+
+  const filteredCalls = useMemo(() => applyFilters(allCalls, filters), [allCalls, filters])
+  const callMetrics = useMemo(() => buildCallMetrics(filteredCalls), [filteredCalls])
+
+  const businessMetrics = useMemo<BusinessMetrics | null>(() => {
+    if (!leads.length) return null
+    // Per-agent call stats from filtered calls only
+    const callsByAgent = new Map<string, { calls: number; duration: number; cost: number }>()
+    for (const c of filteredCalls) {
+      if (!c.agentId) continue
+      const bucket = callsByAgent.get(c.agentId) ?? { calls: 0, duration: 0, cost: 0 }
+      bucket.calls++
+      bucket.duration += c.duration
+      bucket.cost += c.cost ?? 0
+      callsByAgent.set(c.agentId, bucket)
+    }
+    return computeBusinessMetrics(leads, agentNames, callsByAgent)
+  }, [leads, agentNames, filteredCalls])
+
   return {
-    calls: data?.calls ?? [],
-    metrics: data?.metrics ?? null,
-    hourlyData: data?.hourlyData ?? [],
-    dailyData: data?.dailyData ?? [],
-    durationBuckets: data?.durationBuckets ?? [],
-    heatmapData: data?.heatmapData ?? [],
-    businessMetrics: data?.businessMetrics ?? null,
-    costSummary: data?.costSummary ?? null,
-    agentNames: data?.agentNames ?? {},
+    allCalls,
+    filteredCalls,
+    leads,
+    agentNames,
+    callMetrics,
+    businessMetrics,
+    filters,
     isLoading,
     isError: error,
     refresh: mutate,
   }
+}
+
+// Legacy hooks (kept for compatibility with other pieces)
+export function useCalls() {
+  return useDashboardData()
 }
 
 export function useActiveCalls() {
@@ -101,9 +154,7 @@ export function useHealthStatus() {
       const res = await fetch(url)
       return res.json()
     },
-    {
-      refreshInterval: 60000,
-    }
+    { refreshInterval: 60000 }
   )
 
   return {

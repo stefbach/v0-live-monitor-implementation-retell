@@ -3,21 +3,24 @@
 import { useState } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DashboardHeader } from '@/components/dashboard/dashboard-header'
+import { FilterBar } from '@/components/dashboard/filter-bar'
 import { BusinessKpis } from '@/components/dashboard/business-kpis'
+import { CallHeatmap } from '@/components/dashboard/call-heatmap'
+import { CostAdvanced } from '@/components/dashboard/cost-advanced'
 import { ConversionFunnel } from '@/components/dashboard/conversion-funnel'
 import { QualificationBreakdown } from '@/components/dashboard/qualification-breakdown'
 import { SourceAttribution } from '@/components/dashboard/source-attribution'
+import { AttemptFunnel } from '@/components/dashboard/attempt-funnel'
+import { AgentChain } from '@/components/dashboard/agent-chain'
+import { EligibilityPipeline } from '@/components/dashboard/eligibility-pipeline'
+import { DurationHistogram } from '@/components/dashboard/duration-histogram'
+import { VerbatimPanel } from '@/components/dashboard/verbatim-panel'
 import { AgentPerformance } from '@/components/dashboard/agent-performance'
-import { CostOverview } from '@/components/dashboard/cost-overview'
-import { CallVolumeChart } from '@/components/dashboard/call-volume-chart'
-import { SuccessRateChart } from '@/components/dashboard/success-rate-chart'
-import { DurationDistribution } from '@/components/dashboard/duration-distribution'
-import { PeakHoursHeatmap } from '@/components/dashboard/peak-hours-heatmap'
 import { CallLogsTable } from '@/components/dashboard/call-logs-table'
 import { CallDetailSheet } from '@/components/dashboard/call-detail-sheet'
 import { LiveMonitor } from '@/components/dashboard/live-monitor'
 import { MobileBottomNav } from '@/components/dashboard/mobile-bottom-nav'
-import { useCalls } from '@/lib/hooks/use-calls'
+import { useDashboardData } from '@/lib/hooks/use-calls'
 import type { CallLogEnriched } from '@/lib/types'
 
 export default function DashboardPage() {
@@ -27,17 +30,15 @@ export default function DashboardPage() {
   const [isRefreshing, setIsRefreshing] = useState(false)
 
   const {
-    calls,
-    metrics,
-    hourlyData,
-    dailyData,
-    durationBuckets,
-    heatmapData,
+    allCalls,
+    filteredCalls,
+    leads,
+    agentNames,
+    callMetrics,
     businessMetrics,
-    costSummary,
     isLoading,
     refresh,
-  } = useCalls()
+  } = useDashboardData()
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
@@ -55,7 +56,10 @@ export default function DashboardPage() {
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         <DashboardHeader onRefresh={handleRefresh} isRefreshing={isRefreshing} />
 
-        <main className="mt-6">
+        <main className="mt-6 space-y-6">
+          {/* Persistent global filter bar — visible on all tabs */}
+          <FilterBar calls={allCalls} agentNames={agentNames} />
+
           {/* Desktop Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="hidden md:block">
             <TabsList>
@@ -72,22 +76,27 @@ export default function DashboardPage() {
 
             <TabsContent value="overview" className="mt-6 space-y-6">
               <BusinessKpis
-                metrics={metrics}
+                metrics={callMetrics}
                 business={businessMetrics}
+                filteredCalls={filteredCalls}
+                allCalls={allCalls}
+                leads={leads}
+                isLoading={isLoading}
+              />
+
+              <CallHeatmap calls={filteredCalls} isLoading={isLoading} />
+
+              <CostAdvanced
+                allCalls={allCalls}
+                filteredCalls={filteredCalls}
                 isLoading={isLoading}
               />
 
               <div className="grid gap-6 lg:grid-cols-3">
-                <div className="lg:col-span-2">
-                  <CostOverview cost={costSummary} isLoading={isLoading} />
-                </div>
                 <ConversionFunnel
                   funnel={businessMetrics?.funnel ?? null}
                   isLoading={isLoading}
                 />
-              </div>
-
-              <div className="grid gap-6 lg:grid-cols-2">
                 <QualificationBreakdown
                   data={businessMetrics?.qualifications ?? []}
                   isLoading={isLoading}
@@ -98,25 +107,31 @@ export default function DashboardPage() {
                 />
               </div>
 
+              <div className="grid gap-6 lg:grid-cols-2">
+                <AttemptFunnel calls={filteredCalls} isLoading={isLoading} />
+                <AgentChain
+                  calls={filteredCalls}
+                  agentNames={agentNames}
+                  isLoading={isLoading}
+                />
+              </div>
+
+              <EligibilityPipeline leads={leads} isLoading={isLoading} />
+
+              <div className="grid gap-6 lg:grid-cols-2">
+                <DurationHistogram calls={filteredCalls} isLoading={isLoading} />
+                <VerbatimPanel calls={filteredCalls} isLoading={isLoading} />
+              </div>
+
               <AgentPerformance
                 agents={businessMetrics?.agents ?? []}
                 isLoading={isLoading}
               />
-
-              <div className="grid gap-6 lg:grid-cols-2">
-                <CallVolumeChart data={hourlyData} isLoading={isLoading} />
-                <SuccessRateChart data={dailyData} isLoading={isLoading} />
-              </div>
-
-              <div className="grid gap-6 lg:grid-cols-2">
-                <DurationDistribution data={durationBuckets} isLoading={isLoading} />
-                <PeakHoursHeatmap data={heatmapData} isLoading={isLoading} />
-              </div>
             </TabsContent>
 
             <TabsContent value="calls" className="mt-6">
               <CallLogsTable
-                calls={calls}
+                calls={filteredCalls}
                 isLoading={isLoading}
                 onCallSelect={handleCallSelect}
               />
@@ -132,11 +147,19 @@ export default function DashboardPage() {
             {activeTab === 'overview' && (
               <>
                 <BusinessKpis
-                  metrics={metrics}
+                  metrics={callMetrics}
                   business={businessMetrics}
+                  filteredCalls={filteredCalls}
+                  allCalls={allCalls}
+                  leads={leads}
                   isLoading={isLoading}
                 />
-                <CostOverview cost={costSummary} isLoading={isLoading} />
+                <CallHeatmap calls={filteredCalls} isLoading={isLoading} />
+                <CostAdvanced
+                  allCalls={allCalls}
+                  filteredCalls={filteredCalls}
+                  isLoading={isLoading}
+                />
                 <ConversionFunnel
                   funnel={businessMetrics?.funnel ?? null}
                   isLoading={isLoading}
@@ -149,20 +172,25 @@ export default function DashboardPage() {
                   data={businessMetrics?.sources ?? []}
                   isLoading={isLoading}
                 />
+                <AttemptFunnel calls={filteredCalls} isLoading={isLoading} />
+                <AgentChain
+                  calls={filteredCalls}
+                  agentNames={agentNames}
+                  isLoading={isLoading}
+                />
+                <EligibilityPipeline leads={leads} isLoading={isLoading} />
+                <DurationHistogram calls={filteredCalls} isLoading={isLoading} />
+                <VerbatimPanel calls={filteredCalls} isLoading={isLoading} />
                 <AgentPerformance
                   agents={businessMetrics?.agents ?? []}
                   isLoading={isLoading}
                 />
-                <CallVolumeChart data={hourlyData} isLoading={isLoading} />
-                <SuccessRateChart data={dailyData} isLoading={isLoading} />
-                <DurationDistribution data={durationBuckets} isLoading={isLoading} />
-                <PeakHoursHeatmap data={heatmapData} isLoading={isLoading} />
               </>
             )}
 
             {activeTab === 'calls' && (
               <CallLogsTable
-                calls={calls}
+                calls={filteredCalls}
                 isLoading={isLoading}
                 onCallSelect={handleCallSelect}
               />

@@ -233,9 +233,117 @@ export interface BusinessMetrics {
 export interface CallLogEnriched extends CallLog {
   cost: number | null // cents (Retell combined_cost)
   lead: LeadSummary | null
+  disconnectionReason: string | null
+  attemptNumber: number // 1-based, position of this call in the lead's call sequence
+  answered: boolean // proxy: duration > 15s AND not auto-disconnect
+  hourOfDay: number // 0-23 (local UTC, computed client-side OK)
+  dayOfWeek: number // 0-6 (0 = Sunday)
 }
 
 export interface ActiveCallEnriched extends ActiveCall {
   lead: LeadSummary | null
+}
+
+// ─── Eligibility (S2 UK NHS WMP) ────────────────────────────────────────────
+
+export interface EligibilityResult {
+  eligible: boolean
+  reason: 'bmi_40' | 'bmi_35_with_comorbidity' | 'bmi_below' | 'unknown'
+  comorbidities: string[]
+  bmi: number | null
+}
+
+// ─── Filters ────────────────────────────────────────────────────────────────
+
+export type PeriodId = 'today' | 'yesterday' | '7d' | '30d' | 'all' | 'custom'
+
+export type DurationBucketId =
+  | 'lt15s'
+  | '15s-1m'
+  | '1-2m'
+  | '2-3m'
+  | '3-5m'
+  | 'gt5m'
+
+export type AttemptBucketId = '1' | '2' | '3plus'
+
+export type EligibilityFilter = 'all' | 'eligible' | 'ineligible' | 'unknown'
+
+export type AnsweredFilter = 'all' | 'answered' | 'no_answer'
+
+export interface DashboardFilters {
+  period: PeriodId
+  customStart: string | null // ISO date
+  customEnd: string | null // ISO date
+  durations: DurationBucketId[]
+  qualifications: string[]
+  sources: string[]
+  agents: string[] // agent_id list
+  attempts: AttemptBucketId[]
+  eligibility: EligibilityFilter
+  answered: AnsweredFilter
+  search: string
+}
+
+// ─── Heatmap (24×7) ─────────────────────────────────────────────────────────
+
+export interface HeatmapDayHourCell {
+  dayOfWeek: number // 0-6
+  hour: number // 0-23
+  total: number
+  answered: number
+  rdv: number
+  answerRate: number
+  rdvRate: number
+}
+
+// ─── Attempt funnel ─────────────────────────────────────────────────────────
+
+export interface AttemptStat {
+  attempt: number // 1, 2, 3, ...
+  leadsReached: number // distinct leads that had at least this attempt
+  answered: number
+  rdv: number
+  answerRate: number
+  rdvRate: number
+}
+
+// ─── Agent chain (sequence agent A → B → C across attempts) ────────────────
+
+export interface AgentChainNode {
+  agentId: string
+  agentName: string
+  reached: number // leads whose journey includes this agent
+  rdv: number // leads that ended in RDV after passing this agent
+  conversionRate: number
+}
+
+export interface AgentChainEdge {
+  fromAgentId: string
+  fromAgentName: string
+  toAgentId: string
+  toAgentName: string
+  count: number
+}
+
+// ─── Verbatim ───────────────────────────────────────────────────────────────
+
+export interface VerbatimEntry {
+  callId: string
+  qualification: string | null
+  summary: string
+  agentName: string
+  duration: number
+  startTime: string
+  leadName: string | null
+}
+
+// ─── Period delta ───────────────────────────────────────────────────────────
+
+export interface DeltaValue {
+  current: number
+  previous: number
+  delta: number // current - previous
+  pctChange: number // ((current - previous) / previous) * 100, 0 if previous=0
 }
 

@@ -23,8 +23,20 @@ export async function GET(
         { status: 404 }
       )
     }
+    const startMs = new Date(call.startTime).getTime()
+    const d = Number.isFinite(startMs) ? new Date(startMs) : new Date(0)
     return NextResponse.json({
-      data: { ...call, cost: null, lead: null, fullLead: null },
+      data: {
+        ...call,
+        cost: null,
+        lead: null,
+        fullLead: null,
+        disconnectionReason: null,
+        attemptNumber: 1,
+        answered: call.duration >= 15,
+        hourOfDay: d.getHours(),
+        dayOfWeek: d.getDay(),
+      },
       timestamp: new Date().toISOString(),
     })
   }
@@ -63,6 +75,22 @@ export async function GET(
     const costObj = data.call_cost as { combined_cost?: number } | undefined
     const cost =
       typeof costObj?.combined_cost === 'number' ? costObj.combined_cost : null
+    const disconnectionReason = (data.disconnection_reason as string) || null
+    const duration =
+      Number.isFinite(endMs) && Number.isFinite(startMs)
+        ? Math.floor((endMs - startMs) / 1000)
+        : 0
+    const startDate = Number.isFinite(startMs) ? new Date(startMs) : new Date(0)
+    const NO_ANSWER = new Set([
+      'dial_no_answer',
+      'voicemail',
+      'dial_busy',
+      'dial_failed',
+      'no_valid_payment',
+      'inactivity',
+    ])
+    const answered =
+      duration >= 15 && !(disconnectionReason && NO_ANSWER.has(disconnectionReason))
 
     // Lookup the lead via phone
     const counterparty = pickCounterpartyNumber(direction, fromNumber, toNumber)
@@ -122,10 +150,7 @@ export async function GET(
       agentName: agentNames[agentId] || (data.agent_name as string) || 'Unknown Agent',
       status: mapRetellStatus(data.call_status as string),
       direction,
-      duration:
-        Number.isFinite(endMs) && Number.isFinite(startMs)
-          ? Math.floor((endMs - startMs) / 1000)
-          : 0,
+      duration,
       startTime: Number.isFinite(startMs) ? new Date(startMs).toISOString() : '',
       endTime: Number.isFinite(endMs) ? new Date(endMs).toISOString() : null,
       fromNumber,
@@ -142,6 +167,11 @@ export async function GET(
         | 'negative'
         | undefined) ?? undefined,
       cost,
+      disconnectionReason,
+      attemptNumber: 1,
+      answered,
+      hourOfDay: startDate.getHours(),
+      dayOfWeek: startDate.getDay(),
       lead: fullLead
         ? {
             id: fullLead.id,

@@ -1,115 +1,72 @@
 import { NextResponse } from 'next/server'
 import type {
   CallLogEnriched,
-  CallMetrics,
-  HourlyCallData,
-  DailyCallData,
-  DurationBucket,
-  HeatmapCell,
   ApiResponse,
-  BusinessMetrics,
-  CostSummary,
-  CostPoint,
+  Lead,
 } from '@/lib/types'
 import {
   getMockCallLogs,
-  calculateMetrics,
-  generateHourlyData,
-  generateDailyData,
-  generateDurationBuckets,
-  generateHeatmapData,
   getMockActiveCalls,
 } from '@/lib/mock-data'
 import { getAgentNameMap } from '@/lib/agents'
-import {
-  fetchAllLeads,
-  indexLeadsByPhone,
-  toLeadSummary,
-  computeBusinessMetrics,
-} from '@/lib/leads'
+import { fetchAllLeads, indexLeadsByPhone, toLeadSummary } from '@/lib/leads'
 import { normalizePhone, pickCounterpartyNumber } from '@/lib/phone'
 import { supabaseConfigured } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
-interface CallsResponse {
+interface RichCallsResponse {
   calls: CallLogEnriched[]
-  metrics: CallMetrics
-  hourlyData: HourlyCallData[]
-  dailyData: DailyCallData[]
-  durationBuckets: DurationBucket[]
-  heatmapData: HeatmapCell[]
-  businessMetrics: BusinessMetrics | null
-  costSummary: CostSummary
+  leads: Lead[]
   agentNames: Record<string, string>
 }
 
-const EMPTY_RESPONSE: CallsResponse = {
-  calls: [],
-  metrics: {
-    totalCalls: 0,
-    successfulCalls: 0,
-    failedCalls: 0,
-    noAnswerCalls: 0,
-    busyCalls: 0,
-    successRate: 0,
-    averageDuration: 0,
-    totalDuration: 0,
-    activeCalls: 0,
-  },
-  hourlyData: [],
-  dailyData: [],
-  durationBuckets: [],
-  heatmapData: [],
-  businessMetrics: null,
-  costSummary: emptyCostSummary(),
-  agentNames: {},
+const EMPTY: RichCallsResponse = { calls: [], leads: [], agentNames: {} }
+
+const NO_ANSWER_DISCONNECTS = new Set([
+  'dial_no_answer',
+  'voicemail',
+  'dial_busy',
+  'dial_failed',
+  'no_valid_payment',
+  'inactivity',
+])
+
+function isAnswered(durationSec: number, disconnect: string | null): boolean {
+  if (durationSec < 15) return false
+  if (disconnect && NO_ANSWER_DISCONNECTS.has(disconnect)) return false
+  return true
 }
 
-function emptyCostSummary(): CostSummary {
-  return {
-    totalCost: 0,
-    avgCostPerCall: 0,
-    costPerRdv: 0,
-    todayCost: 0,
-    weekCost: 0,
-    monthCost: 0,
-    daily: [],
-  }
-}
-
-export async function GET(): Promise<NextResponse<ApiResponse<CallsResponse>>> {
+export async function GET(): Promise<NextResponse<ApiResponse<RichCallsResponse>>> {
   const apiKeyConfigured = !!process.env.RETELL_API_KEY
   const useMockData = process.env.USE_MOCK_DATA === 'true' || !apiKeyConfigured
 
   if (useMockData) {
     const mockCalls = getMockCallLogs()
     const activeCalls = getMockActiveCalls()
-    const metrics = calculateMetrics(mockCalls)
-    metrics.activeCalls = activeCalls.length
-    const enriched: CallLogEnriched[] = mockCalls.map((c) => ({
-      ...c,
-      cost: null,
-      lead: null,
-    }))
+    const enriched: CallLogEnriched[] = mockCalls.map((c, i) => {
+      const startMs = new Date(c.startTime).getTime()
+      const d = new Date(startMs)
+      return {
+        ...c,
+        cost: null,
+        lead: null,
+        disconnectionReason: null,
+        attemptNumber: 1,
+        answered: c.duration >= 15,
+        hourOfDay: d.getHours(),
+        dayOfWeek: d.getDay(),
+      }
+    })
+    void activeCalls
     return NextResponse.json({
-      data: {
-        calls: enriched,
-        metrics,
-        hourlyData: generateHourlyData(mockCalls),
-        dailyData: generateDailyData(mockCalls),
-        durationBuckets: generateDurationBuckets(mockCalls),
-        heatmapData: generateHeatmapData(mockCalls),
-        businessMetrics: null,
-        costSummary: emptyCostSummary(),
-        agentNames: {},
-      },
+      data: { calls: enriched, leads: [], agentNames: {} },
       timestamp: new Date().toISOString(),
     })
   }
 
   try {
-    // Fetch Retell calls + leads + agent map in parallel
     const [retellResponse, leads, agentNames] = await Promise.all([
       fetch('https://api.retellai.com/v2/list-calls', {
         method: 'POST',
@@ -119,7 +76,7 @@ export async function GET(): Promise<NextResponse<ApiResponse<CallsResponse>>> {
         },
         body: JSON.stringify({ limit: 1000, sort_order: 'descending' }),
       }),
-      supabaseConfigured() ? fetchAllLeads() : Promise.resolve([]),
+      supabaseConfigured() ? fetchAllLeads() : Promise.resolve([] as Lead[]),
       getAgentNameMap(),
     ])
 
@@ -136,12 +93,10 @@ export async function GET(): Promise<NextResponse<ApiResponse<CallsResponse>>> {
         : []
 
     const leadByPhone = indexLeadsByPhone(leads)
-    const callsByAgent = new Map<
-      string,
-      { calls: number; duration: number; cost: number }
-    >()
 
-    const calls: CallLogEnriched[] = callsRaw.map((call) => {
+    // Build prelim calls (no attemptNumber yet)
+    type Prelim = CallLogEnriched & { _key: string; _ts: number }
+    const prelim: Prelim[] = callsRaw.map((call) => {
       const startTs = call.start_timestamp as number | string | undefined
       const endTs = call.end_timestamp as number | string | undefined
       const startMs = startTs != null ? new Date(startTs).getTime() : NaN
@@ -157,25 +112,21 @@ export async function GET(): Promise<NextResponse<ApiResponse<CallsResponse>>> {
           ? Math.floor((endMs - startMs) / 1000)
           : 0
       const counterparty = pickCounterpartyNumber(direction, fromNumber, toNumber)
-      const lead = leadByPhone.get(normalizePhone(counterparty)) ?? null
+      const normPhone = normalizePhone(counterparty)
+      const lead = leadByPhone.get(normPhone) ?? null
       const costObj = call.call_cost as { combined_cost?: number } | undefined
       const cost =
         typeof costObj?.combined_cost === 'number' ? costObj.combined_cost : null
+      const disconnectionReason = (call.disconnection_reason as string) || null
       const transcriptObj = call.transcript_object as unknown[] | undefined
       const recordingUrl = (call.recording_url as string) || undefined
       const summary =
-        (call.call_summary as string) ||
         ((call.call_analysis as { call_summary?: string })?.call_summary as string) ||
+        (call.call_summary as string) ||
         undefined
-
-      // Per-agent aggregation
-      if (agentId) {
-        const bucket = callsByAgent.get(agentId) ?? { calls: 0, duration: 0, cost: 0 }
-        bucket.calls++
-        bucket.duration += duration
-        bucket.cost += cost ?? 0
-        callsByAgent.set(agentId, bucket)
-      }
+      const sentiment = (call.call_analysis as { user_sentiment?: string })
+        ?.user_sentiment as 'positive' | 'neutral' | 'negative' | undefined
+      const startDate = Number.isFinite(startMs) ? new Date(startMs) : new Date(0)
 
       return {
         id: (call.call_id as string) || '',
@@ -192,38 +143,48 @@ export async function GET(): Promise<NextResponse<ApiResponse<CallsResponse>>> {
         userName: lead?.nom ?? undefined,
         recordingUrl,
         summary,
+        sentiment,
         cost,
         lead: lead ? toLeadSummary(lead) : null,
+        disconnectionReason,
+        attemptNumber: 1, // filled below
+        answered: isAnswered(duration, disconnectionReason),
+        hourOfDay: startDate.getHours(),
+        dayOfWeek: startDate.getDay(),
         transcript: Array.isArray(transcriptObj)
           ? transcriptObj.map((t, i) => mapTranscript(t, i))
           : undefined,
+        _key: normPhone || (lead?.id ?? ''),
+        _ts: Number.isFinite(startMs) ? startMs : 0,
       }
     })
 
-    const metrics = calculateMetrics(calls)
-    const businessMetrics = leads.length
-      ? computeBusinessMetrics(leads, agentNames, callsByAgent)
-      : null
-    const costSummary = computeCostSummary(calls)
+    // Compute attemptNumber: per-lead chronological order
+    const byKey = new Map<string, Prelim[]>()
+    for (const c of prelim) {
+      if (!c._key) continue
+      if (!byKey.has(c._key)) byKey.set(c._key, [])
+      byKey.get(c._key)!.push(c)
+    }
+    for (const list of byKey.values()) {
+      list.sort((a, b) => a._ts - b._ts)
+      list.forEach((c, i) => (c.attemptNumber = i + 1))
+    }
+
+    const calls: CallLogEnriched[] = prelim.map(({ _key, _ts, ...c }) => {
+      void _key
+      void _ts
+      return c
+    })
 
     return NextResponse.json({
-      data: {
-        calls,
-        metrics,
-        hourlyData: generateHourlyData(calls),
-        dailyData: generateDailyData(calls),
-        durationBuckets: generateDurationBuckets(calls),
-        heatmapData: generateHeatmapData(calls),
-        businessMetrics,
-        costSummary,
-        agentNames,
-      },
+      data: { calls, leads, agentNames },
       timestamp: new Date().toISOString(),
     })
   } catch (error) {
     return NextResponse.json(
       {
-        data: EMPTY_RESPONSE,
+        data: EMPTY,
         error: error instanceof Error ? error.message : 'Failed to fetch calls',
         timestamp: new Date().toISOString(),
       },
@@ -256,56 +217,5 @@ function mapTranscript(t: unknown, i: number) {
     text: (obj.content as string) || '',
     startTime: typeof obj.start === 'number' ? obj.start : 0,
     endTime: typeof obj.end === 'number' ? obj.end : 0,
-  }
-}
-
-function computeCostSummary(calls: CallLogEnriched[]): CostSummary {
-  const now = new Date()
-  const startOfToday = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate()
-  ).getTime()
-  const startOfWeek = startOfToday - 6 * 24 * 60 * 60 * 1000
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
-
-  let totalCost = 0
-  let todayCost = 0
-  let weekCost = 0
-  let monthCost = 0
-  let rdvBookedFromCalls = 0
-
-  const dailyMap = new Map<string, { cost: number; calls: number }>()
-
-  for (const c of calls) {
-    const cost = c.cost ?? 0
-    totalCost += cost
-    const t = c.startTime ? new Date(c.startTime).getTime() : NaN
-    if (Number.isFinite(t)) {
-      if (t >= startOfToday) todayCost += cost
-      if (t >= startOfWeek) weekCost += cost
-      if (t >= startOfMonth) monthCost += cost
-      const dayKey = new Date(t).toISOString().split('T')[0]
-      const bucket = dailyMap.get(dayKey) ?? { cost: 0, calls: 0 }
-      bucket.cost += cost
-      bucket.calls += 1
-      dailyMap.set(dayKey, bucket)
-    }
-    if (c.lead?.qualification === 'RDV MEDECIN') rdvBookedFromCalls++
-  }
-
-  const daily: CostPoint[] = [...dailyMap.entries()]
-    .map(([date, v]) => ({ date, cost: v.cost, calls: v.calls }))
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(-30)
-
-  return {
-    totalCost,
-    avgCostPerCall: calls.length > 0 ? totalCost / calls.length : 0,
-    costPerRdv: rdvBookedFromCalls > 0 ? totalCost / rdvBookedFromCalls : 0,
-    todayCost,
-    weekCost,
-    monthCost,
-    daily,
   }
 }

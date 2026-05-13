@@ -9,6 +9,7 @@ import {
   type ChartConfig,
 } from '@/components/ui/chart'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useFiltersStore } from '@/lib/stores/filters-store'
 import type { QualificationBreakdown as QB } from '@/lib/types'
 
 interface Props {
@@ -17,13 +18,13 @@ interface Props {
 }
 
 const COLOR_MAP: Record<string, string> = {
-  'RDV MEDECIN': 'hsl(142, 71%, 45%)', // emerald
-  'NOUVEAU DOSSIER': 'hsl(217, 91%, 60%)', // blue
-  'PAS INTERESSE': 'hsl(0, 84%, 60%)', // red
-  'PAS DE REPONSE': 'hsl(38, 92%, 50%)', // amber
-  'FAUX NUMERO': 'hsl(346, 87%, 43%)', // rose
-  'FOLLOW UP': 'hsl(271, 91%, 65%)', // violet
-  TRANSFERRED_TO_ISABELLE: 'hsl(187, 85%, 53%)', // cyan
+  'RDV MEDECIN': 'hsl(142, 71%, 45%)',
+  'NOUVEAU DOSSIER': 'hsl(217, 91%, 60%)',
+  'PAS INTERESSE': 'hsl(0, 84%, 60%)',
+  'PAS DE REPONSE': 'hsl(38, 92%, 50%)',
+  'FAUX NUMERO': 'hsl(346, 87%, 43%)',
+  'FOLLOW UP': 'hsl(271, 91%, 65%)',
+  TRANSFERRED_TO_ISABELLE: 'hsl(187, 85%, 53%)',
 }
 
 function colorFor(q: string, i: number): string {
@@ -31,6 +32,10 @@ function colorFor(q: string, i: number): string {
 }
 
 export function QualificationBreakdown({ data, isLoading }: Props) {
+  const toggle = useFiltersStore((s) => s.toggleArray)
+  const selected = useFiltersStore((s) => s.filters.qualifications)
+  const selSet = new Set(selected)
+
   if (isLoading) {
     return (
       <Card>
@@ -60,7 +65,9 @@ export function QualificationBreakdown({ data, isLoading }: Props) {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-base">Lead qualification</CardTitle>
-        <CardDescription>{total.toLocaleString()} leads classified</CardDescription>
+        <CardDescription>
+          {total.toLocaleString()} leads classified · click a slice to filter
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="flex flex-col items-center gap-4 sm:flex-row">
@@ -74,29 +81,50 @@ export function QualificationBreakdown({ data, isLoading }: Props) {
                 innerRadius={55}
                 outerRadius={90}
                 strokeWidth={2}
+                onClick={(payload) => {
+                  const name = (payload as { name?: string }).name
+                  if (name) toggle('qualifications', name)
+                }}
               >
                 {chartData.map((d) => (
-                  <Cell key={d.name} fill={d.fill} />
+                  <Cell
+                    key={d.name}
+                    fill={d.fill}
+                    style={{
+                      cursor: 'pointer',
+                      opacity: selSet.size === 0 || selSet.has(d.name) ? 1 : 0.3,
+                    }}
+                  />
                 ))}
               </Pie>
             </PieChart>
           </ChartContainer>
-          <ul className="flex-1 space-y-2 text-sm">
-            {data.map((d, i) => (
-              <li key={d.qualification} className="flex items-center justify-between gap-2">
-                <span className="flex items-center gap-2 min-w-0">
-                  <span
-                    className="h-2.5 w-2.5 rounded-sm shrink-0"
-                    style={{ backgroundColor: colorFor(d.qualification, i) }}
-                  />
-                  <span className="truncate">{d.qualification}</span>
-                </span>
-                <span className="font-mono text-muted-foreground">
-                  {d.count.toLocaleString()}{' '}
-                  <span className="text-xs">({d.percent.toFixed(1)}%)</span>
-                </span>
-              </li>
-            ))}
+          <ul className="flex-1 space-y-1 text-sm w-full">
+            {data.map((d, i) => {
+              const isSel = selSet.has(d.qualification)
+              return (
+                <li key={d.qualification}>
+                  <button
+                    onClick={() => toggle('qualifications', d.qualification)}
+                    className={`w-full flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left transition-colors ${
+                      isSel ? 'bg-muted' : 'hover:bg-muted/50'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span
+                        className="h-2.5 w-2.5 rounded-sm shrink-0"
+                        style={{ backgroundColor: colorFor(d.qualification, i) }}
+                      />
+                      <span className="truncate">{d.qualification}</span>
+                    </span>
+                    <span className="font-mono text-muted-foreground text-xs">
+                      {d.count.toLocaleString()}{' '}
+                      <span>({d.percent.toFixed(1)}%)</span>
+                    </span>
+                  </button>
+                </li>
+              )
+            })}
           </ul>
         </div>
       </CardContent>

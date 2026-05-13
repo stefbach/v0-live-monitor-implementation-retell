@@ -2,6 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useFiltersStore } from '@/lib/stores/filters-store'
 import type { AgentPerformance as Perf } from '@/lib/types'
 
 interface Props {
@@ -20,6 +21,10 @@ function formatUsd(cents: number): string {
 }
 
 export function AgentPerformance({ agents, isLoading }: Props) {
+  const toggle = useFiltersStore((s) => s.toggleArray)
+  const selected = useFiltersStore((s) => s.filters.agents)
+  const selSet = new Set(selected)
+
   if (isLoading) {
     return (
       <Card>
@@ -37,11 +42,11 @@ export function AgentPerformance({ agents, isLoading }: Props) {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-base">Agent performance</CardTitle>
-        <CardDescription>Calls placed and RDV booked per agent</CardDescription>
+        <CardDescription>Click a row to filter the dashboard by that agent</CardDescription>
       </CardHeader>
       <CardContent>
         {agents.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No agent activity yet</p>
+          <p className="text-sm text-muted-foreground">No agent activity yet.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -56,22 +61,31 @@ export function AgentPerformance({ agents, isLoading }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {agents.map((a) => (
-                  <tr key={a.agentId} className="border-b border-border/50">
-                    <td className="py-2 truncate max-w-[180px]">{a.agentName}</td>
-                    <td className="py-2 text-right font-mono">{a.calls.toLocaleString()}</td>
-                    <td className="py-2 text-right font-mono text-emerald-500">
-                      {a.rdv.toLocaleString()}
-                    </td>
-                    <td className="py-2 text-right font-mono">{a.rdvRate.toFixed(1)}%</td>
-                    <td className="py-2 text-right font-mono text-muted-foreground">
-                      {formatDuration(a.avgDuration)}
-                    </td>
-                    <td className="py-2 text-right font-mono text-muted-foreground">
-                      {formatUsd(a.totalCost)}
-                    </td>
-                  </tr>
-                ))}
+                {agents.map((a) => {
+                  const isSel = selSet.has(a.agentId)
+                  return (
+                    <tr
+                      key={a.agentId}
+                      onClick={() => toggle('agents', a.agentId)}
+                      className={`border-b border-border/50 cursor-pointer transition-colors ${
+                        isSel ? 'bg-muted' : 'hover:bg-muted/50'
+                      }`}
+                    >
+                      <td className="py-2 truncate max-w-[200px]">{a.agentName}</td>
+                      <td className="py-2 text-right font-mono">{a.calls.toLocaleString()}</td>
+                      <td className="py-2 text-right font-mono text-emerald-500">
+                        {a.rdv.toLocaleString()}
+                      </td>
+                      <td className="py-2 text-right font-mono">{a.rdvRate.toFixed(1)}%</td>
+                      <td className="py-2 text-right font-mono text-muted-foreground">
+                        {formatDuration(a.avgDuration)}
+                      </td>
+                      <td className="py-2 text-right font-mono text-muted-foreground">
+                        {formatUsd(a.totalCost)}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
