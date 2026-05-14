@@ -153,14 +153,14 @@ export function InsightsPanel({ filteredCalls }: Props) {
     <div className="space-y-4">
       <InsightsHeader insights={insights} onRefresh={() => refresh()} loading={isLoading} />
 
-      {insights.strategic_alerts.length > 0 && (
-        <StrategicAlerts alerts={insights.strategic_alerts} />
+      {(insights.strategic_alerts ?? []).length > 0 && (
+        <StrategicAlerts alerts={insights.strategic_alerts ?? []} />
       )}
 
       <ExecutivePulse insights={insights} />
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <ObjectionTracker objections={insights.objections} callsById={callsById} />
+        <ObjectionTracker objections={insights.objections ?? []} callsById={callsById} />
         <TrendSpotting trends={insights.trends} />
       </div>
 
@@ -169,8 +169,8 @@ export function InsightsPanel({ filteredCalls }: Props) {
         <SentimentClimate sentiment={insights.sentiment} callsById={callsById} />
       </div>
 
-      {insights.optimization_hypotheses.length > 0 && (
-        <OptimizationHypotheses hypotheses={insights.optimization_hypotheses} />
+      {(insights.optimization_hypotheses ?? []).length > 0 && (
+        <OptimizationHypotheses hypotheses={insights.optimization_hypotheses ?? []} />
       )}
 
       <p className="text-[10px] text-muted-foreground italic text-center">
@@ -260,10 +260,10 @@ function ExecutivePulse({ insights }: { insights: InsightsResult }) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-sm leading-relaxed">{insights.pulse.summary}</p>
-        {insights.pulse.highlights.length > 0 && (
+        <p className="text-sm leading-relaxed">{insights.pulse?.summary ?? ''}</p>
+        {(insights.pulse?.highlights ?? []).length > 0 && (
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 pt-2">
-            {insights.pulse.highlights.map((h, i) => (
+            {(insights.pulse?.highlights ?? []).map((h, i) => (
               <div key={i} className="rounded-md bg-muted/40 p-2.5">
                 <p className="text-[10px] uppercase tracking-wide text-muted-foreground truncate">
                   {h.label}
@@ -297,31 +297,32 @@ function ObjectionTracker({
         <CardDescription>Pourquoi les prospects refusent (avec suggestions à valider)</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        {objections.length === 0 ? (
+        {(objections ?? []).length === 0 ? (
           <p className="text-sm text-muted-foreground">Aucune objection saillante détectée.</p>
         ) : (
           objections.map((o, i) => {
-            const max = Math.max(...objections.map((x) => x.count), 1)
+            const max = Math.max(...objections.map((x) => x.count ?? 0), 1)
+            const calls = o.example_call_ids ?? []
             return (
               <div key={i} className="space-y-1.5">
                 <div className="flex items-center justify-between text-sm">
                   <span className="font-medium truncate">{o.label}</span>
                   <span className="text-xs text-muted-foreground font-mono">
-                    {o.count} · {o.percent.toFixed(0)}%
+                    {o.count ?? 0} · {(o.percent ?? 0).toFixed(0)}%
                   </span>
                 </div>
                 <div className="h-2 overflow-hidden rounded bg-muted">
                   <div
                     className="h-full bg-red-500/60"
-                    style={{ width: `${(o.count / max) * 100}%` }}
+                    style={{ width: `${((o.count ?? 0) / max) * 100}%` }}
                   />
                 </div>
                 <p className="text-xs text-muted-foreground italic">
                   💡 <strong>Suggestion à valider</strong> : {o.counter_argument}
                 </p>
-                {o.example_call_ids.length > 0 && (
+                {calls.length > 0 && (
                   <div className="flex flex-wrap gap-1">
-                    {o.example_call_ids.slice(0, 3).map((cid) => {
+                    {calls.slice(0, 3).map((cid) => {
                       const c = callsById.get(cid)
                       return (
                         <Badge key={cid} variant="outline" className="text-[10px] font-mono">
@@ -347,6 +348,8 @@ function TrendSpotting({
 }: {
   trends: InsightsResult['trends']
 }) {
+  const keywords = trends?.emerging_keywords ?? []
+  const signals = trends?.weak_signals ?? []
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -357,17 +360,17 @@ function TrendSpotting({
         <CardDescription>Sujets qui émergent dans les conversations</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        {trends.emerging_keywords.length === 0 && trends.weak_signals.length === 0 ? (
+        {keywords.length === 0 && signals.length === 0 ? (
           <p className="text-sm text-muted-foreground">Aucune tendance saillante.</p>
         ) : (
           <>
-            {trends.emerging_keywords.length > 0 && (
+            {keywords.length > 0 && (
               <div>
                 <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-2">
                   Mots-clés émergents
                 </p>
                 <div className="flex flex-wrap gap-1.5">
-                  {trends.emerging_keywords.map((k, i) => (
+                  {keywords.map((k, i) => (
                     <div
                       key={i}
                       title={k.note}
@@ -380,13 +383,13 @@ function TrendSpotting({
                 </div>
               </div>
             )}
-            {trends.weak_signals.length > 0 && (
+            {signals.length > 0 && (
               <div>
                 <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-2 mt-3">
                   Signaux faibles
                 </p>
                 <ul className="space-y-1.5 text-sm">
-                  {trends.weak_signals.map((s, i) => (
+                  {signals.map((s, i) => (
                     <li key={i} className="flex gap-2">
                       <span className="text-muted-foreground">·</span>
                       <span>{s}</span>
@@ -411,6 +414,8 @@ function ScriptAudit({
   audit: InsightsResult['script_audit']
   callsById: Map<string, CallLogEnriched>
 }) {
+  const topics = audit?.common_hangup_topics ?? []
+  const patterns = audit?.converted_call_patterns ?? []
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -423,51 +428,50 @@ function ScriptAudit({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {audit.common_hangup_topics.length > 0 && (
+        {topics.length > 0 && (
           <div>
             <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-2">
               Au moment du raccrochage…
             </p>
             <ul className="space-y-1.5 text-sm">
-              {audit.common_hangup_topics.map((t, i) => (
+              {topics.map((t, i) => (
                 <li key={i} className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <p>{t.topic}</p>
                     <div className="flex flex-wrap gap-1 mt-1">
-                      {t.example_call_ids.slice(0, 3).map((cid) => (
+                      {(t.example_call_ids ?? []).slice(0, 3).map((cid) => (
                         <Badge key={cid} variant="outline" className="text-[10px] font-mono">
                           {callsById.get(cid)?.lead?.nom ?? cid.slice(0, 8)}
                         </Badge>
                       ))}
                     </div>
                   </div>
-                  <span className="text-xs text-muted-foreground font-mono shrink-0">×{t.count}</span>
+                  <span className="text-xs text-muted-foreground font-mono shrink-0">×{t.count ?? 0}</span>
                 </li>
               ))}
             </ul>
           </div>
         )}
-        {audit.converted_call_patterns.length > 0 && (
+        {patterns.length > 0 && (
           <div>
             <p className="text-[10px] uppercase tracking-wide text-emerald-500 mb-2">
               Sur-représenté dans les RDV obtenus
             </p>
             <ul className="space-y-1.5 text-sm">
-              {audit.converted_call_patterns.map((p, i) => (
+              {patterns.map((p, i) => (
                 <li key={i} className="rounded-md bg-emerald-500/5 border border-emerald-500/20 p-2">
                   <p className="font-medium">{p.phrase_or_theme}</p>
                   <p className="text-[11px] text-muted-foreground font-mono mt-0.5">
-                    {p.frequency_in_won}× dans les gagnés · {p.frequency_in_lost}× dans les perdus
+                    {p.frequency_in_won ?? 0}× dans les gagnés · {p.frequency_in_lost ?? 0}× dans les perdus
                   </p>
                 </li>
               ))}
             </ul>
           </div>
         )}
-        {audit.common_hangup_topics.length === 0 &&
-          audit.converted_call_patterns.length === 0 && (
-            <p className="text-sm text-muted-foreground">Données insuffisantes pour cet audit.</p>
-          )}
+        {topics.length === 0 && patterns.length === 0 && (
+          <p className="text-sm text-muted-foreground">Données insuffisantes pour cet audit.</p>
+        )}
       </CardContent>
     </Card>
   )
@@ -482,10 +486,10 @@ function SentimentClimate({
   sentiment: InsightsResult['sentiment']
   callsById: Map<string, CallLogEnriched>
 }) {
-  const total =
-    sentiment.distribution.positive +
-    sentiment.distribution.neutral +
-    sentiment.distribution.negative
+  const dist = sentiment?.distribution ?? { positive: 0, neutral: 0, negative: 0 }
+  const hotLeads = sentiment?.hot_leads ?? []
+  const score = sentiment?.average_score ?? 0
+  const total = (dist.positive ?? 0) + (dist.neutral ?? 0) + (dist.negative ?? 0)
   const pct = (n: number) => (total > 0 ? (n / total) * 100 : 0)
   return (
     <Card>
@@ -501,7 +505,7 @@ function SentimentClimate({
         <div className="flex items-center gap-4">
           <div className="text-center">
             <p className="text-3xl font-bold tabular-nums">
-              {sentiment.average_score.toFixed(1)}
+              {score.toFixed(1)}
               <span className="text-sm text-muted-foreground font-normal">/10</span>
             </p>
             <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -512,35 +516,35 @@ function SentimentClimate({
             <SentimentBar
               icon={<Smile className="h-3 w-3 text-emerald-500" />}
               label="Positif"
-              n={sentiment.distribution.positive}
-              pct={pct(sentiment.distribution.positive)}
+              n={dist.positive ?? 0}
+              pct={pct(dist.positive ?? 0)}
               color="bg-emerald-500/70"
             />
             <SentimentBar
               icon={<Meh className="h-3 w-3 text-blue-500" />}
               label="Neutre"
-              n={sentiment.distribution.neutral}
-              pct={pct(sentiment.distribution.neutral)}
+              n={dist.neutral ?? 0}
+              pct={pct(dist.neutral ?? 0)}
               color="bg-blue-500/70"
             />
             <SentimentBar
               icon={<Frown className="h-3 w-3 text-rose-500" />}
               label="Négatif"
-              n={sentiment.distribution.negative}
-              pct={pct(sentiment.distribution.negative)}
+              n={dist.negative ?? 0}
+              pct={pct(dist.negative ?? 0)}
               color="bg-rose-500/70"
             />
           </div>
         </div>
 
         {/* Hot leads */}
-        {sentiment.hot_leads.length > 0 && (
+        {hotLeads.length > 0 && (
           <div>
             <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1">
               <PhoneCall className="h-3 w-3" /> Hot leads à rappeler humainement
             </p>
             <ul className="space-y-1.5">
-              {sentiment.hot_leads.map((hl: HotLead) => {
+              {hotLeads.map((hl: HotLead) => {
                 const c = callsById.get(hl.call_id)
                 return (
                   <li key={hl.call_id} className="rounded-md border border-border/50 bg-muted/20 p-2">

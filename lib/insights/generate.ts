@@ -88,6 +88,99 @@ function parseToolArguments(raw: string): Record<string, unknown> {
   }
 }
 
+// DeepSeek frequently omits optional-feeling fields even when the schema
+// marks them required (unlike Claude). Normalize the raw output so that
+// every field expected by the UI is present with a safe default.
+function normalizeInsights(raw: unknown): Omit<InsightsResult, 'meta'> {
+  const r = (raw ?? {}) as Record<string, unknown>
+  const pulse = (r.pulse ?? {}) as Record<string, unknown>
+  const trends = (r.trends ?? {}) as Record<string, unknown>
+  const audit = (r.script_audit ?? {}) as Record<string, unknown>
+  const sentiment = (r.sentiment ?? {}) as Record<string, unknown>
+  const distribution = (sentiment.distribution ?? {}) as Record<string, unknown>
+
+  const asArray = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : [])
+  const asNumber = (v: unknown, fallback = 0): number =>
+    typeof v === 'number' && Number.isFinite(v) ? v : fallback
+  const asString = (v: unknown, fallback = ''): string =>
+    typeof v === 'string' ? v : fallback
+
+  return {
+    pulse: {
+      summary: asString(pulse.summary, 'Analyse en cours…'),
+      highlights: asArray<Record<string, unknown>>(pulse.highlights).map((h) => ({
+        label: asString(h.label),
+        value: asString(h.value),
+      })),
+    },
+    strategic_alerts: asArray<Record<string, unknown>>(r.strategic_alerts).map((a) => ({
+      severity:
+        a.severity === 'high' || a.severity === 'medium' || a.severity === 'low'
+          ? (a.severity as 'high' | 'medium' | 'low')
+          : 'low',
+      message: asString(a.message),
+      evidence_count: asNumber(a.evidence_count),
+    })),
+    objections: asArray<Record<string, unknown>>(r.objections).map((o) => ({
+      label: asString(o.label),
+      count: asNumber(o.count),
+      percent: asNumber(o.percent),
+      example_call_ids: asArray<string>(o.example_call_ids).filter(
+        (s) => typeof s === 'string'
+      ),
+      counter_argument: asString(o.counter_argument),
+    })),
+    trends: {
+      emerging_keywords: asArray<Record<string, unknown>>(trends.emerging_keywords).map(
+        (k) => ({
+          keyword: asString(k.keyword),
+          count: asNumber(k.count),
+          note: asString(k.note),
+        })
+      ),
+      weak_signals: asArray<string>(trends.weak_signals).filter(
+        (s) => typeof s === 'string'
+      ),
+    },
+    script_audit: {
+      common_hangup_topics: asArray<Record<string, unknown>>(audit.common_hangup_topics).map(
+        (t) => ({
+          topic: asString(t.topic),
+          count: asNumber(t.count),
+          example_call_ids: asArray<string>(t.example_call_ids).filter(
+            (s) => typeof s === 'string'
+          ),
+        })
+      ),
+      converted_call_patterns: asArray<Record<string, unknown>>(
+        audit.converted_call_patterns
+      ).map((p) => ({
+        phrase_or_theme: asString(p.phrase_or_theme),
+        frequency_in_won: asNumber(p.frequency_in_won),
+        frequency_in_lost: asNumber(p.frequency_in_lost),
+      })),
+    },
+    sentiment: {
+      average_score: asNumber(sentiment.average_score),
+      distribution: {
+        positive: asNumber(distribution.positive),
+        neutral: asNumber(distribution.neutral),
+        negative: asNumber(distribution.negative),
+      },
+      hot_leads: asArray<Record<string, unknown>>(sentiment.hot_leads).map((h) => ({
+        call_id: asString(h.call_id),
+        reason: asString(h.reason),
+      })),
+    },
+    optimization_hypotheses: asArray<Record<string, unknown>>(
+      r.optimization_hypotheses
+    ).map((h) => ({
+      observation: asString(h.observation),
+      test_to_run: asString(h.test_to_run),
+    })),
+  }
+}
+
 export async function generateInsights({
   calls,
   periodLabel,
@@ -147,10 +240,8 @@ export async function generateInsights({
     )
   }
 
-  const insights = parseToolArguments(toolCall.function.arguments) as Omit<
-    InsightsResult,
-    'meta'
-  >
+  const rawArgs = parseToolArguments(toolCall.function.arguments)
+  const insights = normalizeInsights(rawArgs)
 
   return {
     ...insights,
