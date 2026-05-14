@@ -72,8 +72,8 @@ export function InsightsPanel({ filteredCalls }: Props) {
           </CardTitle>
           <CardDescription>
             Génère un résumé exécutif, les objections fréquentes, les tendances émergentes, un
-            audit du script et le climat de la période. Analyse réalisée par Claude Sonnet 4.6 sur
-            les résumés Retell anonymisés (aucun nom de patient n&apos;est transmis).
+            audit du script et le climat de la période. Analyse réalisée par DeepSeek V3 sur
+            les résumés Retell.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -84,7 +84,7 @@ export function InsightsPanel({ filteredCalls }: Props) {
               <strong>{callsWithSummary.length.toLocaleString()}</strong> avec résumé exploitable
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              ~20–40 secondes de génération · coût estimé ~0,15–0,80 $ selon volume
+              ~10–20 secondes de génération · coût estimé ~0,02–0,05 $ selon volume
             </p>
           </div>
           <Button
@@ -134,7 +134,7 @@ export function InsightsPanel({ filteredCalls }: Props) {
               Analyse en cours…
             </CardTitle>
             <CardDescription>
-              Claude analyse {inputCount.toLocaleString()} appels — patientez 20 à 40 secondes.
+              DeepSeek analyse {inputCount.toLocaleString()} appels — patientez 10 à 20 secondes.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
