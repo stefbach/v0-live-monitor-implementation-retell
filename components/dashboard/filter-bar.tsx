@@ -55,11 +55,11 @@ export function FilterBar({ calls, agentNames }: FilterBarProps) {
   }, [calls])
 
   const activeCount =
-    filters.durations.length +
-    filters.qualifications.length +
-    filters.sources.length +
-    filters.agents.length +
-    filters.attempts.length +
+    (filters.durations?.length ?? 0) +
+    (filters.qualifications?.length ?? 0) +
+    (filters.sources?.length ?? 0) +
+    (filters.agents?.length ?? 0) +
+    (filters.attempts?.length ?? 0) +
     (filters.eligibility !== 'all' ? 1 : 0) +
     (filters.answered !== 'all' ? 1 : 0) +
     (filters.search ? 1 : 0)
@@ -75,44 +75,44 @@ export function FilterBar({ calls, agentNames }: FilterBarProps) {
         {/* Multi-select pills */}
         <MultiSelectPill
           label="Duration"
-          count={filters.durations.length}
+          count={filters.durations?.length ?? 0}
           options={DURATION_BUCKETS.map((d) => ({ id: d.id, label: d.label }))}
-          selected={filters.durations}
+          selected={filters.durations ?? []}
           onToggle={(v) => toggleArray('durations', v as DurationBucketId)}
           onClear={() => patch({ durations: [] })}
         />
         <MultiSelectPill
           label="Qualification"
-          count={filters.qualifications.length}
+          count={filters.qualifications?.length ?? 0}
           options={qualifs.map((q) => ({ id: q, label: q }))}
-          selected={filters.qualifications}
+          selected={filters.qualifications ?? []}
           onToggle={(v) => toggleArray('qualifications', v)}
           onClear={() => patch({ qualifications: [] })}
         />
         <MultiSelectPill
           label="Source"
-          count={filters.sources.length}
+          count={filters.sources?.length ?? 0}
           options={sources.map((s) => ({ id: s, label: s }))}
-          selected={filters.sources}
+          selected={filters.sources ?? []}
           onToggle={(v) => toggleArray('sources', v)}
           onClear={() => patch({ sources: [] })}
         />
         <MultiSelectPill
           label="Agent"
-          count={filters.agents.length}
+          count={filters.agents?.length ?? 0}
           options={agentsInData.map((id) => ({
             id,
             label: agentNames[id] || id.slice(0, 12),
           }))}
-          selected={filters.agents}
+          selected={filters.agents ?? []}
           onToggle={(v) => toggleArray('agents', v)}
           onClear={() => patch({ agents: [] })}
         />
         <MultiSelectPill
           label="Attempt"
-          count={filters.attempts.length}
+          count={filters.attempts?.length ?? 0}
           options={ATTEMPT_OPTIONS}
-          selected={filters.attempts}
+          selected={filters.attempts ?? []}
           onToggle={(v) => toggleArray('attempts', v as AttemptBucketId)}
           onClear={() => patch({ attempts: [] })}
         />

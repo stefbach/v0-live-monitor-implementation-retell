@@ -93,12 +93,12 @@ export function applyFilters(
   now: Date = new Date()
 ): CallLogEnriched[] {
   const { start, end } = periodRange(filters.period, filters.customStart, filters.customEnd, now)
-  const durSet = new Set(filters.durations)
-  const qSet = new Set(filters.qualifications)
-  const srcSet = new Set(filters.sources)
-  const agSet = new Set(filters.agents)
-  const attSet = new Set(filters.attempts)
-  const search = filters.search.trim().toLowerCase()
+  const durSet = new Set(filters.durations ?? [])
+  const qSet = new Set(filters.qualifications ?? [])
+  const srcSet = new Set(filters.sources ?? [])
+  const agSet = new Set(filters.agents ?? [])
+  const attSet = new Set(filters.attempts ?? [])
+  const search = (filters.search ?? '').trim().toLowerCase()
 
   return calls.filter((c) => {
     const t = c.startTime ? new Date(c.startTime).getTime() : 0

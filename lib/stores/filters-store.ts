@@ -16,6 +16,21 @@ interface FiltersState {
   ) => void
 }
 
+// Merge persisted state with DEFAULT_FILTERS so that:
+//   - older localStorage entries that lack new fields don't crash
+//     (e.g. filters.durations.length when durations was added later)
+//   - we always have a complete, well-typed filters object
+function safeMerge(
+  persistedState: unknown,
+  currentState: FiltersState
+): FiltersState {
+  const p = persistedState as { filters?: Partial<DashboardFilters> } | null
+  return {
+    ...currentState,
+    filters: { ...DEFAULT_FILTERS, ...(p?.filters ?? {}) },
+  }
+}
+
 export const useFiltersStore = create<FiltersState>()(
   persist(
     (set) => ({
@@ -35,7 +50,9 @@ export const useFiltersStore = create<FiltersState>()(
     }),
     {
       name: 'dashboard-filters',
+      version: 2,
       partialize: (s) => ({ filters: s.filters }),
+      merge: safeMerge,
     }
   )
 )
