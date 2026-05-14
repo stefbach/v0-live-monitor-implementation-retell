@@ -1,9 +1,10 @@
 'use client'
 
 import useSWR from 'swr'
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import type { CallLogEnriched } from '@/lib/types'
 import type { InsightsCallInput, InsightsRequest, InsightsResult } from '@/lib/insights/types'
+import { useInsightsStore, makeInsightsKey } from '@/lib/stores/insights-store'
 
 const fetcher = async (url: string, body: InsightsRequest) => {
   const res = await fetch(url, {
@@ -41,9 +42,19 @@ interface Options {
 
 export function useInsights({ filteredCalls, periodLabel, enabled }: Options) {
   const llmInput = useMemo(() => toLLMInput(filteredCalls), [filteredCalls])
-  const callIds = useMemo(() => llmInput.map((c) => c.call_id).sort().join('|'), [llmInput])
+  const callIds = useMemo(() => llmInput.map((c) => c.call_id), [llmInput])
+  const cacheKey = useMemo(
+    () => makeInsightsKey(periodLabel, callIds),
+    [periodLabel, callIds]
+  )
 
-  const swrKey = enabled && llmInput.length > 0 ? ['insights', periodLabel, callIds] : null
+  // Persistent local cache — survives tab switches and browser restarts
+  const cached = useInsightsStore((s) => s.cache[cacheKey])
+  const setCached = useInsightsStore((s) => s.setEntry)
+
+  // SWR only fires when user explicitly enables AND we don't already have a cached entry
+  const shouldFetch = enabled && !cached && llmInput.length > 0
+  const swrKey = shouldFetch ? ['insights', cacheKey] : null
 
   const { data, error, isLoading, isValidating, mutate } = useSWR<InsightsResult>(
     swrKey,
@@ -56,29 +67,34 @@ export function useInsights({ filteredCalls, periodLabel, enabled }: Options) {
       revalidateOnFocus: false,
       revalidateOnReconnect: false,
       shouldRetryOnError: false,
+      dedupingInterval: 60_000,
     }
   )
 
-  const refresh = useCallback(
-    async () =>
-      mutate(
-        async () =>
-          fetcher('/api/insights', {
-            calls: llmInput,
-            period_label: periodLabel,
-            force_refresh: true,
-          }),
-        { revalidate: false }
-      ),
-    [mutate, llmInput, periodLabel]
-  )
+  // Persist newly-generated insights into the local store
+  useEffect(() => {
+    if (data) setCached(cacheKey, data)
+  }, [data, cacheKey, setCached])
+
+  // Force a fresh server-side generation (ignores both client and server caches)
+  const refresh = useCallback(async () => {
+    const result = await fetcher('/api/insights', {
+      calls: llmInput,
+      period_label: periodLabel,
+      force_refresh: true,
+    })
+    setCached(cacheKey, result)
+    await mutate(result, { revalidate: false })
+    return result
+  }, [mutate, llmInput, periodLabel, cacheKey, setCached])
 
   return {
-    insights: data ?? null,
+    insights: cached ?? data ?? null,
     isLoading: isLoading || isValidating,
     isError: error as Error | undefined,
     refresh,
     hasInput: llmInput.length > 0,
     inputCount: llmInput.length,
+    fromLocalCache: !!cached,
   }
 }

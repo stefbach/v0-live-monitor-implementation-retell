@@ -49,7 +49,7 @@ export function InsightsPanel({ filteredCalls }: Props) {
     [filteredCalls]
   )
 
-  const { insights, isLoading, isError, refresh, inputCount } = useInsights({
+  const { insights, isLoading, isError, refresh, inputCount, fromLocalCache } = useInsights({
     filteredCalls,
     periodLabel: label,
     enabled,
@@ -151,7 +151,12 @@ export function InsightsPanel({ filteredCalls }: Props) {
 
   return (
     <div className="space-y-4">
-      <InsightsHeader insights={insights} onRefresh={() => refresh()} loading={isLoading} />
+      <InsightsHeader
+        insights={insights}
+        onRefresh={() => refresh()}
+        loading={isLoading}
+        fromLocalCache={fromLocalCache}
+      />
 
       {(insights.strategic_alerts ?? []).length > 0 && (
         <StrategicAlerts alerts={insights.strategic_alerts ?? []} />
@@ -188,10 +193,12 @@ function InsightsHeader({
   insights,
   onRefresh,
   loading,
+  fromLocalCache,
 }: {
   insights: InsightsResult
   onRefresh: () => void
   loading: boolean
+  fromLocalCache: boolean
 }) {
   const generated = new Date(insights.meta.generated_at)
   return (
@@ -206,7 +213,12 @@ function InsightsHeader({
             Généré {format(generated, 'HH:mm:ss')} ·{' '}
             {insights.meta.calls_analysed.toLocaleString()} appels ·{' '}
             {(insights.meta.elapsed_ms / 1000).toFixed(1)}s · {insights.meta.model}
-            {insights.meta.cached && (
+            {fromLocalCache && (
+              <Badge variant="secondary" className="ml-2 text-[10px]">
+                💾 cache local
+              </Badge>
+            )}
+            {insights.meta.cached && !fromLocalCache && (
               <Badge variant="secondary" className="ml-2 text-[10px]">
                 cached
               </Badge>
