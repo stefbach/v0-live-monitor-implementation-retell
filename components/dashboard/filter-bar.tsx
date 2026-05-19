@@ -11,6 +11,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { useFiltersStore } from '@/lib/stores/filters-store'
+import { useT } from '@/lib/hooks/use-t'
 import { DURATION_BUCKETS, PERIODS } from '@/lib/filters'
 import type {
   CallLogEnriched,
@@ -31,6 +32,7 @@ const ATTEMPT_OPTIONS: { id: AttemptBucketId; label: string }[] = [
 ]
 
 export function FilterBar({ calls, agentNames }: FilterBarProps) {
+  const { t } = useT()
   const filters = useFiltersStore((s) => s.filters)
   const patch = useFiltersStore((s) => s.patch)
   const toggleArray = useFiltersStore((s) => s.toggleArray)
@@ -74,7 +76,7 @@ export function FilterBar({ calls, agentNames }: FilterBarProps) {
 
         {/* Multi-select pills */}
         <MultiSelectPill
-          label="Duration"
+          label={t('filter.duration')}
           count={filters.durations?.length ?? 0}
           options={DURATION_BUCKETS.map((d) => ({ id: d.id, label: d.label }))}
           selected={filters.durations ?? []}
@@ -82,7 +84,7 @@ export function FilterBar({ calls, agentNames }: FilterBarProps) {
           onClear={() => patch({ durations: [] })}
         />
         <MultiSelectPill
-          label="Qualification"
+          label={t('filter.qualification')}
           count={filters.qualifications?.length ?? 0}
           options={qualifs.map((q) => ({ id: q, label: q }))}
           selected={filters.qualifications ?? []}
@@ -90,7 +92,7 @@ export function FilterBar({ calls, agentNames }: FilterBarProps) {
           onClear={() => patch({ qualifications: [] })}
         />
         <MultiSelectPill
-          label="Source"
+          label={t('filter.source')}
           count={filters.sources?.length ?? 0}
           options={sources.map((s) => ({ id: s, label: s }))}
           selected={filters.sources ?? []}
@@ -98,7 +100,7 @@ export function FilterBar({ calls, agentNames }: FilterBarProps) {
           onClear={() => patch({ sources: [] })}
         />
         <MultiSelectPill
-          label="Agent"
+          label={t('filter.agent')}
           count={filters.agents?.length ?? 0}
           options={agentsInData.map((id) => ({
             id,
@@ -109,32 +111,32 @@ export function FilterBar({ calls, agentNames }: FilterBarProps) {
           onClear={() => patch({ agents: [] })}
         />
         <MultiSelectPill
-          label="Attempt"
+          label={t('filter.attempt')}
           count={filters.attempts?.length ?? 0}
-          options={ATTEMPT_OPTIONS}
+          options={ATTEMPT_OPTIONS.map((o) => ({ id: o.id, label: t(`attempt.${o.id}`) }))}
           selected={filters.attempts ?? []}
           onToggle={(v) => toggleArray('attempts', v as AttemptBucketId)}
           onClear={() => patch({ attempts: [] })}
         />
 
         <SinglePill
-          label="Eligibility"
+          label={t('filter.eligibility')}
           value={filters.eligibility}
           options={[
-            { id: 'all', label: 'Any' },
-            { id: 'eligible', label: 'Eligible (S2 UK)' },
-            { id: 'ineligible', label: 'Not eligible' },
-            { id: 'unknown', label: 'Unknown / no BMI' },
+            { id: 'all', label: t('elig.all') },
+            { id: 'eligible', label: t('elig.eligible') },
+            { id: 'ineligible', label: t('elig.ineligible') },
+            { id: 'unknown', label: t('elig.unknown') },
           ]}
           onChange={(v) => patch({ eligibility: v as typeof filters.eligibility })}
         />
         <SinglePill
-          label="Answered"
+          label={t('filter.answered')}
           value={filters.answered}
           options={[
-            { id: 'all', label: 'Any' },
-            { id: 'answered', label: 'Answered (>15s)' },
-            { id: 'no_answer', label: 'No answer' },
+            { id: 'all', label: t('ans.all') },
+            { id: 'answered', label: t('ans.answered') },
+            { id: 'no_answer', label: t('ans.no') },
           ]}
           onChange={(v) => patch({ answered: v as typeof filters.answered })}
         />
@@ -144,14 +146,14 @@ export function FilterBar({ calls, agentNames }: FilterBarProps) {
           <Input
             value={filters.search}
             onChange={(e) => patch({ search: e.target.value })}
-            placeholder="Search name, phone, summary…"
+            placeholder={t('filter.search')}
             className="pl-9 h-9"
           />
         </div>
 
         {activeCount > 0 && (
           <Button variant="ghost" size="sm" onClick={reset} className="gap-1">
-            <RotateCcw className="h-3.5 w-3.5" /> Reset
+            <RotateCcw className="h-3.5 w-3.5" /> {t('filter.reset')}
             <Badge variant="secondary" className="ml-1 text-xs">
               {activeCount}
             </Badge>
@@ -163,6 +165,7 @@ export function FilterBar({ calls, agentNames }: FilterBarProps) {
 }
 
 function PeriodSelector() {
+  const { t } = useT()
   const period = useFiltersStore((s) => s.filters.period)
   const patch = useFiltersStore((s) => s.patch)
   return (
@@ -177,7 +180,7 @@ function PeriodSelector() {
               : 'text-muted-foreground hover:text-foreground'
           }`}
         >
-          {p.label}
+          {t(`period.${p.id}`)}
         </button>
       ))}
     </div>
@@ -204,6 +207,7 @@ function MultiSelectPill({
   onToggle: (id: string) => void
   onClear: () => void
 }) {
+  const { t } = useT()
   const [open, setOpen] = useState(false)
   const selSet = new Set(selected)
   return (
@@ -226,7 +230,7 @@ function MultiSelectPill({
       <PopoverContent className="w-64 p-1" align="start">
         <div className="max-h-72 overflow-y-auto">
           {options.length === 0 ? (
-            <p className="px-3 py-2 text-xs text-muted-foreground">No options</p>
+            <p className="px-3 py-2 text-xs text-muted-foreground">{t('filter.noOptions')}</p>
           ) : (
             options.map((o) => {
               const isSel = selSet.has(o.id)
@@ -251,7 +255,7 @@ function MultiSelectPill({
               onClick={onClear}
               className="w-full rounded px-3 py-1.5 text-left text-xs text-muted-foreground hover:bg-muted/50"
             >
-              Clear {label.toLowerCase()}
+              {t('filter.clear')} {label.toLowerCase()}
             </button>
           </div>
         )}
