@@ -21,6 +21,7 @@ import { TabPlaceholder } from '@/components/dashboard/tab-placeholder'
 import { DirectorView } from '@/components/dashboard/director/director-view'
 import { CallLogsTable } from '@/components/dashboard/call-logs-table'
 import { CallLogsFilters } from '@/components/dashboard/call-logs-filters'
+import { StatsExtras } from '@/components/dashboard/stats/stats-extras'
 import { CallDetailSheet } from '@/components/dashboard/call-detail-sheet'
 import { LiveMonitor } from '@/components/dashboard/live-monitor'
 import { MobileBottomNav } from '@/components/dashboard/mobile-bottom-nav'
@@ -155,6 +156,12 @@ export default function DashboardPage() {
                 agents={businessMetrics?.agents ?? []}
                 isLoading={isLoading}
               />
+
+              <StatsExtras
+                allCalls={allCalls}
+                filteredCalls={filteredCalls}
+                isLoading={isLoading}
+              />
             </TabsContent>
 
             <TabsContent value="insights" className="mt-6">
@@ -235,6 +242,11 @@ export default function DashboardPage() {
                 <VerbatimPanel calls={filteredCalls} isLoading={isLoading} />
                 <AgentPerformance
                   agents={businessMetrics?.agents ?? []}
+                  isLoading={isLoading}
+                />
+                <StatsExtras
+                  allCalls={allCalls}
+                  filteredCalls={filteredCalls}
                   isLoading={isLoading}
                 />
               </>
