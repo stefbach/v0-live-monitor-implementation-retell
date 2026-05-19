@@ -1,6 +1,6 @@
 'use client'
 
-import { BarChart3, List, Radio } from 'lucide-react'
+import { Home, BarChart3, List, Radio, AlertTriangle, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface MobileBottomNavProps {
@@ -9,9 +9,12 @@ interface MobileBottomNavProps {
 }
 
 const tabs = [
-  { id: 'overview', label: 'Overview', icon: BarChart3 },
+  { id: 'directeur', label: 'Directeur', icon: Home },
+  { id: 'stats', label: 'Stats', icon: BarChart3 },
   { id: 'calls', label: 'Calls', icon: List },
   { id: 'live', label: 'Live', icon: Radio },
+  { id: 'erreurs', label: 'Alertes', icon: AlertTriangle },
+  { id: 'insights', label: 'IA', icon: Sparkles },
 ]
 
 export function MobileBottomNav({ activeTab, onTabChange }: MobileBottomNavProps) {

@@ -4,6 +4,9 @@ import { getMockCallById } from '@/lib/mock-data'
 import { getAgentNameMap } from '@/lib/agents'
 import { getSupabaseServer, supabaseConfigured } from '@/lib/supabase'
 import { normalizePhone, pickCounterpartyNumber } from '@/lib/phone'
+import { getUKParts, getCreneau } from '@/lib/timezone'
+import { detectRobotAwareness, detectVoicemailSuspected } from '@/lib/detection'
+import type { CallMetadataInfo, CallCustomAnalysis } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,8 +37,14 @@ export async function GET(
         disconnectionReason: null,
         attemptNumber: 1,
         answered: call.duration >= 15,
-        hourOfDay: d.getHours(),
-        dayOfWeek: d.getDay(),
+        hourOfDay: getUKParts(d)?.hour ?? 0,
+        dayOfWeek: getUKParts(d)?.dayOfWeek ?? 0,
+        creneau: getCreneau(getUKParts(d)?.hour ?? -1, getUKParts(d)?.minute ?? 0),
+        meta: null,
+        analysis: null,
+        inVoicemail: null,
+        voicemailSuspected: false,
+        robotAwareness: null,
       },
       timestamp: new Date().toISOString(),
     })
@@ -80,7 +89,6 @@ export async function GET(
       Number.isFinite(endMs) && Number.isFinite(startMs)
         ? Math.floor((endMs - startMs) / 1000)
         : 0
-    const startDate = Number.isFinite(startMs) ? new Date(startMs) : new Date(0)
     const NO_ANSWER = new Set([
       'dial_no_answer',
       'voicemail',
@@ -142,6 +150,46 @@ export async function GET(
       }
     }
 
+    // Enrich-on-click: definitive robot-awareness from the FULL transcript
+    const fullTranscriptText =
+      typeof data.transcript === 'string' ? (data.transcript as string) : ''
+    const ca = data.call_analysis as Record<string, unknown> | undefined
+    const cad = ca?.custom_analysis_data as Record<string, unknown> | undefined
+    const inVoicemail =
+      ca && typeof ca.in_voicemail === 'boolean' ? (ca.in_voicemail as boolean) : null
+    const bool = (v: unknown): boolean | null => (typeof v === 'boolean' ? v : null)
+    const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null)
+    const m = data.metadata as Record<string, unknown> | undefined
+    const num = (v: unknown): number | null =>
+      typeof v === 'number' ? v : v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : null
+    const metaInfo: CallMetadataInfo | null =
+      m && typeof m === 'object'
+        ? {
+            leadId: (m.lead_id as string) ?? null,
+            phase: (m.phase as string) ?? null,
+            today: (m.today as string) ?? null,
+            j1Attempts: num(m.j1_attempts),
+            j3Attempts: num(m.j3_attempts),
+            j5Attempts: num(m.j5_attempts),
+          }
+        : null
+    const analysisInfo: CallCustomAnalysis | null =
+      cad && typeof cad === 'object'
+        ? {
+            callOutcome: str(cad.call_outcome),
+            interestLevel: str(cad.interest_level),
+            objectionsRaised: str(cad.objections_raised),
+            callbackScheduled: bool(cad.callback_scheduled),
+            callbackDatetime: str(cad.callback_datetime),
+            transferToIsabelle: bool(cad.transfer_to_isabelle),
+            humanTransferTriggered: bool(cad.human_transfer_triggered),
+            availability: str(cad.availability),
+            mainConcern: str(cad.main_concern),
+            emotionalState: str(cad.emotional_state),
+          }
+        : null
+    const ukParts = getUKParts(Number.isFinite(startMs) ? startMs : undefined)
+
     const transcriptArr = (data.transcript_object as unknown[]) || (data.transcript as unknown[])
     const call: CallLogEnriched & { fullLead?: Lead | null } = {
       id: (data.call_id as string) || id,
@@ -170,8 +218,22 @@ export async function GET(
       disconnectionReason,
       attemptNumber: 1,
       answered,
-      hourOfDay: startDate.getHours(),
-      dayOfWeek: startDate.getDay(),
+      hourOfDay: ukParts?.hour ?? 0,
+      dayOfWeek: ukParts?.dayOfWeek ?? 0,
+      creneau: getCreneau(ukParts?.hour ?? -1, ukParts?.minute ?? 0),
+      meta: metaInfo,
+      analysis: analysisInfo,
+      inVoicemail,
+      voicemailSuspected: detectVoicemailSuspected(
+        inVoicemail,
+        duration,
+        disconnectionReason
+      ),
+      robotAwareness: detectRobotAwareness(
+        fullTranscriptText ||
+          ((data.call_analysis as { call_summary?: string })?.call_summary as string) ||
+          ''
+      ),
       lead: fullLead
         ? {
             id: fullLead.id,

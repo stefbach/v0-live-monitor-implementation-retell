@@ -12,6 +12,51 @@ import { getAgentNameMap } from '@/lib/agents'
 import { fetchAllLeads, indexLeadsByPhone, toLeadSummary } from '@/lib/leads'
 import { normalizePhone, pickCounterpartyNumber } from '@/lib/phone'
 import { supabaseConfigured } from '@/lib/supabase'
+import { getUKParts, getCreneau } from '@/lib/timezone'
+import { detectRobotAwareness, detectVoicemailSuspected } from '@/lib/detection'
+import type { CallMetadataInfo, CallCustomAnalysis } from '@/lib/types'
+
+function extractMetadata(call: Record<string, unknown>): CallMetadataInfo | null {
+  const m = call.metadata as Record<string, unknown> | undefined
+  if (!m || typeof m !== 'object') return null
+  const num = (v: unknown): number | null =>
+    typeof v === 'number' ? v : v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : null
+  return {
+    leadId: (m.lead_id as string) ?? null,
+    phase: (m.phase as string) ?? null,
+    today: (m.today as string) ?? null,
+    j1Attempts: num(m.j1_attempts),
+    j3Attempts: num(m.j3_attempts),
+    j5Attempts: num(m.j5_attempts),
+  }
+}
+
+function extractCustomAnalysis(
+  call: Record<string, unknown>
+): { analysis: CallCustomAnalysis | null; inVoicemail: boolean | null } {
+  const ca = call.call_analysis as Record<string, unknown> | undefined
+  if (!ca || typeof ca !== 'object') return { analysis: null, inVoicemail: null }
+  const cad = ca.custom_analysis_data as Record<string, unknown> | undefined
+  const bool = (v: unknown): boolean | null => (typeof v === 'boolean' ? v : null)
+  const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null)
+  const inVoicemail = typeof ca.in_voicemail === 'boolean' ? ca.in_voicemail : null
+  if (!cad || typeof cad !== 'object') return { analysis: null, inVoicemail }
+  return {
+    inVoicemail,
+    analysis: {
+      callOutcome: str(cad.call_outcome),
+      interestLevel: str(cad.interest_level),
+      objectionsRaised: str(cad.objections_raised),
+      callbackScheduled: bool(cad.callback_scheduled),
+      callbackDatetime: str(cad.callback_datetime),
+      transferToIsabelle: bool(cad.transfer_to_isabelle),
+      humanTransferTriggered: bool(cad.human_transfer_triggered),
+      availability: str(cad.availability),
+      mainConcern: str(cad.main_concern),
+      emotionalState: str(cad.emotional_state),
+    },
+  }
+}
 
 export const dynamic = 'force-dynamic'
 
@@ -45,9 +90,9 @@ export async function GET(): Promise<NextResponse<ApiResponse<RichCallsResponse>
   if (useMockData) {
     const mockCalls = getMockCallLogs()
     const activeCalls = getMockActiveCalls()
-    const enriched: CallLogEnriched[] = mockCalls.map((c, i) => {
+    const enriched: CallLogEnriched[] = mockCalls.map((c) => {
       const startMs = new Date(c.startTime).getTime()
-      const d = new Date(startMs)
+      const uk = getUKParts(Number.isFinite(startMs) ? startMs : undefined)
       return {
         ...c,
         cost: null,
@@ -55,8 +100,14 @@ export async function GET(): Promise<NextResponse<ApiResponse<RichCallsResponse>
         disconnectionReason: null,
         attemptNumber: 1,
         answered: c.duration >= 15,
-        hourOfDay: d.getHours(),
-        dayOfWeek: d.getDay(),
+        hourOfDay: uk?.hour ?? 0,
+        dayOfWeek: uk?.dayOfWeek ?? 0,
+        creneau: getCreneau(uk?.hour ?? -1, uk?.minute ?? 0),
+        meta: null,
+        analysis: null,
+        inVoicemail: null,
+        voicemailSuspected: false,
+        robotAwareness: null,
       }
     })
     void activeCalls
@@ -126,7 +177,20 @@ export async function GET(): Promise<NextResponse<ApiResponse<RichCallsResponse>
         undefined
       const sentiment = (call.call_analysis as { user_sentiment?: string })
         ?.user_sentiment as 'positive' | 'neutral' | 'negative' | undefined
-      const startDate = Number.isFinite(startMs) ? new Date(startMs) : new Date(0)
+      const meta = extractMetadata(call)
+      const { analysis, inVoicemail } = extractCustomAnalysis(call)
+      const ukParts = getUKParts(Number.isFinite(startMs) ? startMs : undefined)
+      const ukHour = ukParts?.hour ?? 0
+      const ukDow = ukParts?.dayOfWeek ?? 0
+      const creneau = getCreneau(ukParts?.hour ?? -1, ukParts?.minute ?? 0)
+      const voicemailSuspected = detectVoicemailSuspected(
+        inVoicemail,
+        duration,
+        disconnectionReason
+      )
+      // list-calls rarely includes the full transcript → best-effort scan on
+      // the summary here; the definitive check happens on click via get-call.
+      const robotAwareness = summary ? detectRobotAwareness(summary) || null : null
 
       return {
         id: (call.call_id as string) || '',
@@ -149,8 +213,14 @@ export async function GET(): Promise<NextResponse<ApiResponse<RichCallsResponse>
         disconnectionReason,
         attemptNumber: 1, // filled below
         answered: isAnswered(duration, disconnectionReason),
-        hourOfDay: startDate.getHours(),
-        dayOfWeek: startDate.getDay(),
+        hourOfDay: ukHour,
+        dayOfWeek: ukDow,
+        creneau,
+        meta,
+        analysis,
+        inVoicemail,
+        voicemailSuspected,
+        robotAwareness,
         transcript: Array.isArray(transcriptObj)
           ? transcriptObj.map((t, i) => mapTranscript(t, i))
           : undefined,

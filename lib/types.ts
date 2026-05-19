@@ -230,14 +230,46 @@ export interface BusinessMetrics {
 
 // ─── Enriched call shape (Retell + Lead + cost + agent name) ────────────────
 
+// Retell metadata injected by n8n on each call
+export interface CallMetadataInfo {
+  leadId: string | null
+  phase: string | null // J1 / J3 / J5
+  today: string | null
+  j1Attempts: number | null
+  j3Attempts: number | null
+  j5Attempts: number | null
+}
+
+// call_analysis.custom_analysis_data
+export interface CallCustomAnalysis {
+  callOutcome: string | null // per-call outcome (e.g. "rdv_confirme")
+  interestLevel: string | null
+  objectionsRaised: string | null
+  callbackScheduled: boolean | null
+  callbackDatetime: string | null
+  transferToIsabelle: boolean | null
+  humanTransferTriggered: boolean | null
+  availability: string | null
+  mainConcern: string | null
+  emotionalState: string | null
+}
+
+export type CreneauKey = 'creneau_1' | 'creneau_2' | 'creneau_3' | 'hors_creneau'
+
 export interface CallLogEnriched extends CallLog {
   cost: number | null // cents (Retell combined_cost)
   lead: LeadSummary | null
   disconnectionReason: string | null
   attemptNumber: number // 1-based, position of this call in the lead's call sequence
   answered: boolean // proxy: duration > 15s AND not auto-disconnect
-  hourOfDay: number // 0-23 (local UTC, computed client-side OK)
-  dayOfWeek: number // 0-6 (0 = Sunday)
+  hourOfDay: number // 0-23 in Europe/London (UK)
+  dayOfWeek: number // 0-6 (0 = Sunday) in Europe/London (UK)
+  creneau: CreneauKey
+  meta: CallMetadataInfo | null
+  analysis: CallCustomAnalysis | null
+  inVoicemail: boolean | null // call_analysis.in_voicemail
+  voicemailSuspected: boolean // undetected voicemail heuristic
+  robotAwareness: boolean | null // null until full transcript fetched (enrich-on-click)
 }
 
 export interface ActiveCallEnriched extends ActiveCall {
