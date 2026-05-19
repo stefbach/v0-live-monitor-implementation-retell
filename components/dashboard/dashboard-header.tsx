@@ -10,6 +10,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useTimeRangeStore } from '@/lib/stores/time-range-store'
+import { LangToggle } from './lang-toggle'
+import { useT } from '@/lib/hooks/use-t'
 import type { TimeRange } from '@/lib/types'
 
 interface DashboardHeaderProps {
@@ -19,6 +21,7 @@ interface DashboardHeaderProps {
 
 export function DashboardHeader({ onRefresh, isRefreshing }: DashboardHeaderProps) {
   const { timeRange, setTimeRange } = useTimeRangeStore()
+  const { t } = useT()
 
   return (
     <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -28,15 +31,14 @@ export function DashboardHeader({ onRefresh, isRefreshing }: DashboardHeaderProp
         </div>
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
-            Call Dashboard
+            {t('app.title')}
           </h1>
-          <p className="text-sm text-muted-foreground">
-            Monitor and analyze your Retell AI calls
-          </p>
+          <p className="text-sm text-muted-foreground">{t('app.subtitle')}</p>
         </div>
       </div>
 
       <div className="flex items-center gap-3">
+        <LangToggle />
         <Select
           value={timeRange}
           onValueChange={(value: TimeRange) => setTimeRange(value)}

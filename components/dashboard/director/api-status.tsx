@@ -1,9 +1,11 @@
 'use client'
 
 import { useHealthStatus } from '@/lib/hooks/use-calls'
+import { useT } from '@/lib/hooks/use-t'
 
 export function ApiStatus() {
   const { health, isError } = useHealthStatus()
+  const { t } = useT()
   const ok = !!health && !isError && (health.apiKeyConfigured ?? true)
   return (
     <div className="flex items-center gap-2 rounded-full border bg-card px-3 py-1.5">
@@ -18,7 +20,7 @@ export function ApiStatus() {
         />
       </span>
       <span className="text-xs font-medium">
-        API Retell {ok ? 'opérationnelle' : 'dégradée'}
+        {ok ? t('api.ok') : t('api.down')}
       </span>
     </div>
   )

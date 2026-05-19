@@ -21,6 +21,7 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ApiStatus } from './api-status'
 import { DetailSlideOver } from './detail-slideover'
+import { useT } from '@/lib/hooks/use-t'
 import {
   computeDirectorKpis,
   callsForKpi,
@@ -52,6 +53,7 @@ function fmtDur(s: number) {
 }
 
 export function DirectorView({ filteredCalls, leads, isLoading, onSelectCall }: Props) {
+  const { t } = useT()
   const period = useFiltersStore((s) => s.filters.period)
   const periodLabel = PERIODS.find((p) => p.id === period)?.label ?? period
   const [threshold, setThreshold] = useState(60)
@@ -59,6 +61,7 @@ export function DirectorView({ filteredCalls, leads, isLoading, onSelectCall }: 
   const [panel, setPanel] = useState<{
     title: string
     calls: CallLogEnriched[]
+    raw?: boolean
   } | null>(null)
 
   const kpis = useMemo(
@@ -68,6 +71,10 @@ export function DirectorView({ filteredCalls, leads, isLoading, onSelectCall }: 
   const qualCounts = useMemo(
     () => computeQualificationCounts(filteredCalls),
     [filteredCalls]
+  )
+  const leadsClassified = useMemo(
+    () => Object.values(qualCounts).reduce((s, n) => s + n, 0),
+    [qualCounts]
   )
   const phase = useMemo(() => computePhaseTracking(filteredCalls), [filteredCalls])
   const agents = useMemo(() => computeAgentBuckets(filteredCalls), [filteredCalls])
@@ -110,7 +117,7 @@ export function DirectorView({ filteredCalls, leads, isLoading, onSelectCall }: 
       {/* Header row */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">Vue d&apos;ensemble</h2>
+          <h2 className="text-lg font-semibold">{t('director.title')}</h2>
           <p className="text-sm text-muted-foreground">
             Période : <span className="font-medium">{periodLabel}</span> ·{' '}
             {filteredCalls.length.toLocaleString()} appels
@@ -178,10 +185,27 @@ export function DirectorView({ filteredCalls, leads, isLoading, onSelectCall }: 
       {/* Qualification cards */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Qualifications</CardTitle>
-          <CardDescription>
-            État CRM actuel des leads · clique une card pour voir les appels
-          </CardDescription>
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <CardTitle className="text-base">{t('director.qualifications')}</CardTitle>
+              <CardDescription>
+                État CRM actuel des leads · clique une card pour voir les appels
+              </CardDescription>
+            </div>
+            <div className="text-right">
+              <p className="text-2xl font-bold tabular-nums">
+                {filteredCalls.length.toLocaleString()}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                appels Retell · {leadsClassified.toLocaleString()} leads classifiés
+              </p>
+            </div>
+          </div>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Les cards comptent les <strong>leads uniques</strong> (état CRM le plus
+            récent), pas les appels — la somme ne correspond donc pas au total
+            d&apos;appels.
+          </p>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -204,6 +228,28 @@ export function DirectorView({ filteredCalls, leads, isLoading, onSelectCall }: 
                 </button>
               )
             })}
+            {/* Autres / Non classifiés — capture tout statut Retell hors des 8 */}
+            <button
+              onClick={() =>
+                setPanel({
+                  title: 'Autres / Non classifiés',
+                  calls: callsForQualification(filteredCalls, 'autre'),
+                  raw: true,
+                })
+              }
+              className="rounded-lg border border-l-4 border-l-zinc-500 bg-card p-4 text-left transition-shadow hover:shadow-md"
+            >
+              <div className="flex items-center justify-between">
+                <span className="h-2.5 w-2.5 rounded-sm bg-zinc-500" />
+                <span className="text-2xl font-bold tabular-nums">
+                  {(qualCounts.autre ?? 0).toLocaleString()}
+                </span>
+              </div>
+              <p className="mt-2 text-sm font-medium">Autres / Non classifiés</p>
+              <p className="text-[10px] text-muted-foreground">
+                statuts Retell hors des 8 catégories
+              </p>
+            </button>
           </div>
         </CardContent>
       </Card>
@@ -302,6 +348,7 @@ export function DirectorView({ filteredCalls, leads, isLoading, onSelectCall }: 
         onOpenChange={(o) => !o && setPanel(null)}
         title={panel?.title ?? ''}
         calls={panel?.calls ?? []}
+        showRaw={panel?.raw}
         onSelectCall={(c) => {
           setPanel(null)
           onSelectCall(c)

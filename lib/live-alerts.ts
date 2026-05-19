@@ -122,7 +122,10 @@ export function computeRobotLeads(calls: CallLogEnriched[]): RobotLead[] {
 }
 
 export interface Anomaly {
-  kind: 'repeated_no_connect' | 'max_attempts_never_reached'
+  kind:
+    | 'repeated_no_connect'
+    | 'max_attempts_never_reached'
+    | 'missing_metadata'
   key: string
   label: string
   detail: string
@@ -186,6 +189,23 @@ export function computeAnomalies(calls: CallLogEnriched[]): Anomaly[] {
         count: b.maxAttempts,
       })
     }
+  }
+
+  // Calls without metadata.lead_id (placed before the n8n metadata
+  // rollout) — surfaced so they're easy to identify. They are still
+  // grouped via phone fallback but worth flagging.
+  const noMeta = calls.filter((c) => !c.meta?.leadId)
+  if (noMeta.length > 0) {
+    out.push({
+      kind: 'missing_metadata',
+      key: 'missing_metadata',
+      label: 'Appels sans metadata',
+      detail: `${noMeta.length} appels sans metadata.lead_id (regroupés par téléphone). Ex: ${noMeta
+        .slice(0, 3)
+        .map((c) => c.callId.slice(0, 12))
+        .join(', ')}`,
+      count: noMeta.length,
+    })
   }
 
   return out.sort((a, b) => b.count - a.count)

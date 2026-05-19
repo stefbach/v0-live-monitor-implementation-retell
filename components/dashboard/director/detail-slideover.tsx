@@ -21,6 +21,17 @@ interface Props {
   subtitle?: string
   calls: CallLogEnriched[]
   onSelectCall: (call: CallLogEnriched) => void
+  showRaw?: boolean // show raw Retell status instead of mapped qualif badge
+}
+
+function rawStatus(c: CallLogEnriched): string {
+  return (
+    c.lead?.qualification ||
+    c.analysis?.callOutcome ||
+    c.disconnectionReason ||
+    c.status ||
+    '—'
+  )
 }
 
 function fmtDur(s: number) {
@@ -34,6 +45,7 @@ export function DetailSlideOver({
   subtitle,
   calls,
   onSelectCall,
+  showRaw,
 }: Props) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -78,9 +90,18 @@ export function DetailSlideOver({
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
-                  <Badge variant="outline" className={q.badgeClass}>
-                    {q.label}
-                  </Badge>
+                  {showRaw ? (
+                    <Badge
+                      variant="outline"
+                      className="bg-zinc-500/10 text-zinc-300 border-zinc-500/30 font-mono"
+                    >
+                      {rawStatus(c)}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className={q.badgeClass}>
+                      {q.label}
+                    </Badge>
+                  )}
                   <span className="flex items-center gap-2 text-xs text-muted-foreground">
                     {c.answered ? (
                       <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />

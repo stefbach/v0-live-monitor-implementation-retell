@@ -26,9 +26,11 @@ import { LiveView } from '@/components/dashboard/live/live-view'
 import { ErrorsView } from '@/components/dashboard/errors/errors-view'
 import { MobileBottomNav } from '@/components/dashboard/mobile-bottom-nav'
 import { useDashboardData } from '@/lib/hooks/use-calls'
+import { useT } from '@/lib/hooks/use-t'
 import type { CallLogEnriched } from '@/lib/types'
 
 export default function DashboardPage() {
+  const { t } = useT()
   const [activeTab, setActiveTab] = useState('directeur')
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null)
   const [isSheetOpen, setIsSheetOpen] = useState(false)
@@ -68,19 +70,19 @@ export default function DashboardPage() {
           {/* Desktop Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="hidden md:block">
             <TabsList>
-              <TabsTrigger value="directeur">🏠 Vue d&apos;ensemble</TabsTrigger>
-              <TabsTrigger value="stats">📊 Statistiques</TabsTrigger>
-              <TabsTrigger value="calls">📋 Call Logs</TabsTrigger>
+              <TabsTrigger value="directeur">🏠 {t('tab.directeur')}</TabsTrigger>
+              <TabsTrigger value="stats">📊 {t('tab.stats')}</TabsTrigger>
+              <TabsTrigger value="calls">📋 {t('tab.calls')}</TabsTrigger>
               <TabsTrigger value="live" className="gap-2">
-                🔴 Live
+                🔴 {t('tab.live')}
                 <span className="relative flex h-2 w-2">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
                 </span>
               </TabsTrigger>
-              <TabsTrigger value="erreurs">⚠️ Erreurs & Alertes</TabsTrigger>
+              <TabsTrigger value="erreurs">⚠️ {t('tab.erreurs')}</TabsTrigger>
               <TabsTrigger value="insights" className="gap-1.5">
-                <span className="text-violet-400">✨</span> AI Insights
+                <span className="text-violet-400">✨</span> {t('tab.insights')}
               </TabsTrigger>
             </TabsList>
 

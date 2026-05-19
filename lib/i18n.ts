@@ -1,0 +1,94 @@
+// Lightweight i18n. Keys are dot-namespaced; missing keys fall back to FR
+// then to the key itself so nothing ever renders blank.
+
+export type Lang = 'fr' | 'en'
+
+type Dict = Record<string, string>
+
+const fr: Dict = {
+  'app.title': 'Tableau de bord des appels',
+  'app.subtitle': 'Pilotage et analyse de vos appels Retell AI',
+  'common.refresh': 'Rafraîchir',
+  'common.retry': 'Réessayer',
+  'common.loading': 'Chargement…',
+  'common.period': 'Période',
+  'common.calls': 'appels',
+  'common.lead': 'Lead',
+  'common.agent': 'Agent',
+  'common.cost': 'Coût',
+  'common.duration': 'Durée',
+  'common.answered': 'Répondu',
+  'common.yes': 'Oui',
+  'common.no': 'Non',
+  'common.all': 'Tous',
+  'tab.directeur': "Vue d'ensemble",
+  'tab.stats': 'Statistiques',
+  'tab.calls': 'Call Logs',
+  'tab.live': 'Live',
+  'tab.erreurs': 'Erreurs & Alertes',
+  'tab.insights': 'AI Insights',
+  'director.title': "Vue d'ensemble",
+  'director.qualifications': 'Qualifications',
+  'director.qualifications.desc':
+    'État CRM actuel des leads · clique une card pour voir les appels',
+  'director.others': 'Autres / Non classifiés',
+  'director.totalCalls': 'Total appels',
+  'director.answered': 'Décrochés',
+  'director.costConsumed': 'Coût consommé',
+  'director.rdvConfirmed': 'RDV confirmés',
+  'director.conversion': 'Taux de conversion',
+  'director.avgDuration': 'Durée moyenne (TMMC)',
+  'director.callbacks': 'Callbacks demandés',
+  'director.phaseTracking': 'Suivi J1 / J3 / J5',
+  'director.agentChain': "Chaîne d'agents",
+  'director.handoff': 'Dossiers à confier à un humain',
+  'api.ok': 'API Retell opérationnelle',
+  'api.down': 'API Retell dégradée',
+}
+
+const en: Dict = {
+  'app.title': 'Call Dashboard',
+  'app.subtitle': 'Monitor and analyze your Retell AI calls',
+  'common.refresh': 'Refresh',
+  'common.retry': 'Retry',
+  'common.loading': 'Loading…',
+  'common.period': 'Period',
+  'common.calls': 'calls',
+  'common.lead': 'Lead',
+  'common.agent': 'Agent',
+  'common.cost': 'Cost',
+  'common.duration': 'Duration',
+  'common.answered': 'Answered',
+  'common.yes': 'Yes',
+  'common.no': 'No',
+  'common.all': 'All',
+  'tab.directeur': 'Overview',
+  'tab.stats': 'Statistics',
+  'tab.calls': 'Call Logs',
+  'tab.live': 'Live',
+  'tab.erreurs': 'Errors & Alerts',
+  'tab.insights': 'AI Insights',
+  'director.title': 'Overview',
+  'director.qualifications': 'Qualifications',
+  'director.qualifications.desc':
+    'Current CRM state of leads · click a card to see the calls',
+  'director.others': 'Other / Unclassified',
+  'director.totalCalls': 'Total calls',
+  'director.answered': 'Answered',
+  'director.costConsumed': 'Cost consumed',
+  'director.rdvConfirmed': 'Confirmed appointments',
+  'director.conversion': 'Conversion rate',
+  'director.avgDuration': 'Avg duration',
+  'director.callbacks': 'Callbacks requested',
+  'director.phaseTracking': 'J1 / J3 / J5 tracking',
+  'director.agentChain': 'Agent chain',
+  'director.handoff': 'Files to hand to a human',
+  'api.ok': 'Retell API operational',
+  'api.down': 'Retell API degraded',
+}
+
+const DICTS: Record<Lang, Dict> = { fr, en }
+
+export function translate(lang: Lang, key: string): string {
+  return DICTS[lang]?.[key] ?? fr[key] ?? key
+}

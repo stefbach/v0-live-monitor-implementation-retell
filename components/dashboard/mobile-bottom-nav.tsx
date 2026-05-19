@@ -2,6 +2,7 @@
 
 import { Home, BarChart3, List, Radio, AlertTriangle, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useT } from '@/lib/hooks/use-t'
 
 interface MobileBottomNavProps {
   activeTab: string
@@ -9,15 +10,16 @@ interface MobileBottomNavProps {
 }
 
 const tabs = [
-  { id: 'directeur', label: 'Aperçu', icon: Home },
-  { id: 'stats', label: 'Stats', icon: BarChart3 },
-  { id: 'calls', label: 'Calls', icon: List },
-  { id: 'live', label: 'Live', icon: Radio },
-  { id: 'erreurs', label: 'Alertes', icon: AlertTriangle },
-  { id: 'insights', label: 'IA', icon: Sparkles },
+  { id: 'directeur', key: 'tab.directeur', icon: Home },
+  { id: 'stats', key: 'tab.stats', icon: BarChart3 },
+  { id: 'calls', key: 'tab.calls', icon: List },
+  { id: 'live', key: 'tab.live', icon: Radio },
+  { id: 'erreurs', key: 'tab.erreurs', icon: AlertTriangle },
+  { id: 'insights', key: 'tab.insights', icon: Sparkles },
 ]
 
 export function MobileBottomNav({ activeTab, onTabChange }: MobileBottomNavProps) {
+  const { t } = useT()
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:hidden">
       <div className="flex items-center justify-around h-16">
@@ -33,7 +35,7 @@ export function MobileBottomNav({ activeTab, onTabChange }: MobileBottomNavProps
               )}
             >
               <tab.icon className={cn('h-5 w-5', isActive && 'text-primary')} />
-              <span className="text-xs font-medium">{tab.label}</span>
+              <span className="text-xs font-medium">{t(tab.key)}</span>
               {tab.id === 'live' && (
                 <span className="absolute top-3 right-1/4 flex h-2 w-2">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />

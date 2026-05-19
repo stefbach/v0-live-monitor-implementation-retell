@@ -1,6 +1,25 @@
 import type { CallLogEnriched, Lead } from './types'
 import { qualKeyFromRaw, type QualKey } from './qualifications'
 import { computeEligibility } from './eligibility'
+import { normalizePhone, pickCounterpartyNumber } from './phone'
+
+// Stable grouping key for "the same lead across multiple calls".
+// metadata.lead_id is the source of truth, but older calls (placed before
+// the n8n metadata rollout) may not have it — fall back to the matched
+// CRM lead id, then to the normalised counterparty phone number so those
+// calls are still grouped and counted instead of being dropped.
+export function leadGroupKey(c: CallLogEnriched): string | null {
+  if (c.meta?.leadId) return c.meta.leadId
+  if (c.lead?.id) return c.lead.id
+  const phone = normalizePhone(
+    pickCounterpartyNumber(c.direction, c.fromNumber, c.toNumber)
+  )
+  return phone || null
+}
+
+export function hasMetadata(c: CallLogEnriched): boolean {
+  return !!c.meta?.leadId
+}
 
 // ─── KPI banner ─────────────────────────────────────────────────────────────
 
@@ -35,7 +54,7 @@ export function computeDirectorKpis(
     if (c.analysis?.callbackScheduled) callbacks++
     if (c.duration > durationThresholdSec) over++
     if (qualKeyFromRaw(c.lead?.qualification) === 'rdv_confirme') {
-      rdvLeadIds.add(c.lead?.id ?? c.meta?.leadId ?? c.callId)
+      rdvLeadIds.add(leadGroupKey(c) ?? c.callId)
     }
   }
 
@@ -103,7 +122,7 @@ export function computeQualificationCounts(
 ): Record<QualKey, number> {
   const seen = new Map<string, CallLogEnriched>()
   for (const c of calls) {
-    const id = c.lead?.id ?? c.meta?.leadId
+    const id = leadGroupKey(c)
     if (!id) continue
     // keep the most recent call per lead
     const prev = seen.get(id)
@@ -191,7 +210,7 @@ export function computePhaseTracking(calls: CallLogEnriched[]): PhaseTracking {
     const phase = c.meta?.phase ?? 'Inconnu'
     const b = phaseMap.get(phase) ?? { leads: new Set<string>(), calls: 0 }
     b.calls++
-    const lid = c.meta?.leadId ?? c.lead?.id
+    const lid = leadGroupKey(c)
     if (lid) b.leads.add(lid)
     phaseMap.set(phase, b)
     creneauMap.set(c.creneau, (creneauMap.get(c.creneau) ?? 0) + 1)
@@ -226,9 +245,7 @@ export interface AgentBuckets {
   agent1And2And3: number
 }
 
-function leadKey(c: CallLogEnriched): string | null {
-  return c.meta?.leadId ?? c.lead?.id ?? null
-}
+const leadKey = leadGroupKey
 
 export function computeAgentBuckets(calls: CallLogEnriched[]): AgentBuckets {
   const byLead = new Map<string, Set<number>>()

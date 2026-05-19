@@ -247,6 +247,18 @@ export async function GET(): Promise<NextResponse<ApiResponse<RichCallsResponse>
       return c
     })
 
+    // Log calls missing metadata.lead_id so they're easy to spot in Vercel
+    // logs (they still get grouped by phone fallback downstream).
+    const missingMeta = calls.filter((c) => !c.meta?.leadId)
+    if (missingMeta.length > 0) {
+      console.warn(
+        `[calls] ${missingMeta.length}/${calls.length} appels sans metadata.lead_id — ids: ${missingMeta
+          .slice(0, 20)
+          .map((c) => c.callId)
+          .join(', ')}`
+      )
+    }
+
     return NextResponse.json({
       data: { calls, leads, agentNames },
       timestamp: new Date().toISOString(),
