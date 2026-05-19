@@ -44,13 +44,13 @@ export function DashboardHeader({ onRefresh, isRefreshing }: DashboardHeaderProp
           onValueChange={(value: TimeRange) => setTimeRange(value)}
         >
           <SelectTrigger className="w-32">
-            <SelectValue placeholder="Time range" />
+            <SelectValue placeholder={t('timerange.placeholder')} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="hourly">Hourly</SelectItem>
-            <SelectItem value="daily">Daily</SelectItem>
-            <SelectItem value="weekly">Weekly</SelectItem>
-            <SelectItem value="monthly">Monthly</SelectItem>
+            <SelectItem value="hourly">{t('timerange.hourly')}</SelectItem>
+            <SelectItem value="daily">{t('timerange.daily')}</SelectItem>
+            <SelectItem value="weekly">{t('timerange.weekly')}</SelectItem>
+            <SelectItem value="monthly">{t('timerange.monthly')}</SelectItem>
           </SelectContent>
         </Select>
 

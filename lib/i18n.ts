@@ -8,6 +8,11 @@ type Dict = Record<string, string>
 const fr: Dict = {
   'app.title': 'Tableau de bord des appels',
   'app.subtitle': 'Pilotage et analyse de vos appels Retell AI',
+  'timerange.placeholder': 'Plage',
+  'timerange.hourly': 'Par heure',
+  'timerange.daily': 'Par jour',
+  'timerange.weekly': 'Par semaine',
+  'timerange.monthly': 'Par mois',
   'common.refresh': 'Rafraîchir',
   'common.retry': 'Réessayer',
   'common.loading': 'Chargement…',
@@ -49,6 +54,11 @@ const fr: Dict = {
 const en: Dict = {
   'app.title': 'Call Dashboard',
   'app.subtitle': 'Monitor and analyze your Retell AI calls',
+  'timerange.placeholder': 'Range',
+  'timerange.hourly': 'Hourly',
+  'timerange.daily': 'Daily',
+  'timerange.weekly': 'Weekly',
+  'timerange.monthly': 'Monthly',
   'common.refresh': 'Refresh',
   'common.retry': 'Retry',
   'common.loading': 'Loading…',
