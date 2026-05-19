@@ -5,6 +5,7 @@ import { Phone, PhoneIncoming, PhoneOutgoing, Radio, User, Activity } from 'luci
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useActiveCalls } from '@/lib/hooks/use-calls'
+import { useT } from '@/lib/hooks/use-t'
 import { LiveCallSkeleton } from './skeleton-loaders'
 import type { ActiveCallEnriched, Qualification } from '@/lib/types'
 
@@ -33,15 +34,21 @@ function getQualifBadge(q: Qualification | null | undefined) {
 }
 
 function LiveCallCard({ call }: { call: ActiveCallEnriched }) {
+  const { t } = useT()
   const [duration, setDuration] = useState(call.currentDuration)
 
   useEffect(() => {
     const startTime = new Date(call.startTime).getTime()
-    const update = () => setDuration(Math.floor((Date.now() - startTime) / 1000))
+    if (!Number.isFinite(startTime)) {
+      setDuration(call.currentDuration > 0 ? call.currentDuration : 0)
+      return
+    }
+    const update = () =>
+      setDuration(Math.max(0, Math.floor((Date.now() - startTime) / 1000)))
     update()
     const interval = setInterval(update, 1000)
     return () => clearInterval(interval)
-  }, [call.startTime])
+  }, [call.startTime, call.currentDuration])
 
   const lead = call.lead
 
@@ -64,7 +71,7 @@ function LiveCallCard({ call }: { call: ActiveCallEnriched }) {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <p className="font-semibold truncate text-base">
-                {lead?.nom || 'Unknown caller'}
+                {lead?.nom || t('live.unknown')}
               </p>
               <Badge
                 variant="outline"
@@ -74,14 +81,14 @@ function LiveCallCard({ call }: { call: ActiveCallEnriched }) {
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
                 </span>
-                Live
+                {t('live.badge')}
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground font-mono truncate">
               {call.direction === 'inbound' ? call.fromNumber : call.toNumber}
             </p>
             <p className="text-xs text-muted-foreground truncate mt-1">
-              Agent: <span className="text-foreground">{call.agentName}</span>
+              {t('live.agent')}: <span className="text-foreground">{call.agentName}</span>
             </p>
           </div>
 
@@ -94,7 +101,7 @@ function LiveCallCard({ call }: { call: ActiveCallEnriched }) {
           <div className="rounded-md bg-muted/40 p-3 space-y-2">
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs text-muted-foreground flex items-center gap-1">
-                <User className="h-3 w-3" /> Matched lead
+                <User className="h-3 w-3" /> {t('live.matchedLead')}
               </span>
               {getQualifBadge(lead.qualification)}
             </div>
@@ -104,19 +111,19 @@ function LiveCallCard({ call }: { call: ActiveCallEnriched }) {
                 <p className="font-mono font-medium">{lead.bmi != null ? lead.bmi.toFixed(1) : '—'}</p>
               </div>
               <div>
-                <p className="text-muted-foreground">Source</p>
+                <p className="text-muted-foreground">{t('live.source')}</p>
                 <p className="truncate font-medium">{lead.source_lead ?? '—'}</p>
               </div>
               <div>
                 <p className="text-muted-foreground flex items-center gap-1">
-                  <Activity className="h-3 w-3" /> Calls
+                  <Activity className="h-3 w-3" /> {t('live.callsCount')}
                 </p>
                 <p className="font-mono font-medium">{lead.call_count ?? 0}</p>
               </div>
             </div>
             {lead.date_rdv && (
               <p className="text-xs text-emerald-500 font-medium">
-                📅 RDV scheduled: {lead.date_rdv}
+                📅 {t('live.rdvScheduled')}: {lead.date_rdv}
               </p>
             )}
           </div>
@@ -127,18 +134,33 @@ function LiveCallCard({ call }: { call: ActiveCallEnriched }) {
 }
 
 export function LiveMonitor() {
+  const { t } = useT()
   const { activeCalls, isLoading, isError, refresh } = useActiveCalls()
+  const [lastCheck, setLastCheck] = useState<string | null>(null)
 
-  if (isLoading) {
+  // Stamp the time of every successful poll so the user can SEE the
+  // monitor is alive even when there are 0 active calls.
+  useEffect(() => {
+    if (!isLoading && !isError) {
+      const d = new Date()
+      setLastCheck(
+        `${String(d.getHours()).padStart(2, '0')}:${String(
+          d.getMinutes()
+        ).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
+      )
+    }
+  }, [isLoading, isError, activeCalls])
+
+  if (isLoading && !lastCheck) {
     return (
       <div className="space-y-4">
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <Radio className="h-4 w-4 text-emerald-500" />
-              Live Calls
+              {t('live.title')}
             </CardTitle>
-            <CardDescription>Real-time active call monitoring</CardDescription>
+            <CardDescription>{t('live.checking')}</CardDescription>
           </CardHeader>
         </Card>
         {[...Array(2)].map((_, i) => (
@@ -154,12 +176,12 @@ export function LiveMonitor() {
         <CardContent className="py-8">
           <div className="flex flex-col items-center justify-center text-center">
             <Phone className="h-12 w-12 text-red-500/50" />
-            <p className="mt-4 text-sm text-red-400">Failed to load active calls</p>
+            <p className="mt-4 text-sm text-red-400">{t('live.failed')}</p>
             <button
               onClick={() => refresh()}
               className="mt-2 text-sm text-red-400 underline hover:text-red-300"
             >
-              Try again
+              {t('live.retry')}
             </button>
           </div>
         </CardContent>
@@ -175,19 +197,19 @@ export function LiveMonitor() {
             <div>
               <CardTitle className="text-base flex items-center gap-2">
                 <Radio className="h-4 w-4 text-emerald-500" />
-                Live Calls
+                {t('live.title')}
                 {activeCalls.length > 0 && (
                   <Badge className="bg-emerald-500 text-white ml-2">{activeCalls.length}</Badge>
                 )}
               </CardTitle>
-              <CardDescription>Real-time active call monitoring · Patient context matched from CRM</CardDescription>
+              <CardDescription>{t('live.desc')}</CardDescription>
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
               </span>
-              Auto-refreshing
+              {t('live.connected')} {lastCheck ?? '—'}
             </div>
           </div>
         </CardHeader>
@@ -200,9 +222,9 @@ export function LiveMonitor() {
               <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
                 <Phone className="h-8 w-8 text-muted-foreground" />
               </div>
-              <p className="mt-4 text-sm text-muted-foreground">No active calls</p>
+              <p className="mt-4 text-sm text-muted-foreground">{t('live.none')}</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Active calls will appear here in real-time
+                {t('live.noneHint')}
               </p>
             </div>
           </CardContent>

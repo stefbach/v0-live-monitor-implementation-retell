@@ -76,6 +76,21 @@ const fr: Dict = {
   'director.handoff': 'Dossiers à confier à un humain',
   'api.ok': 'API Retell opérationnelle',
   'api.down': 'API Retell dégradée',
+  'live.title': 'Appels en cours',
+  'live.desc': 'Suivi temps réel · contexte patient depuis le CRM',
+  'live.connected': 'Connecté · vérifié à',
+  'live.checking': 'Connexion…',
+  'live.none': 'Aucun appel en cours actuellement',
+  'live.noneHint': 'Connexion OK — rafraîchissement automatique toutes les 5 s',
+  'live.failed': 'Échec du chargement des appels en cours',
+  'live.retry': 'Réessayer',
+  'live.badge': 'En direct',
+  'live.unknown': 'Appelant inconnu',
+  'live.agent': 'Agent',
+  'live.matchedLead': 'Lead identifié',
+  'live.source': 'Source',
+  'live.callsCount': 'Appels',
+  'live.rdvScheduled': 'RDV planifié',
 }
 
 const en: Dict = {
@@ -149,6 +164,21 @@ const en: Dict = {
   'director.handoff': 'Files to hand to a human',
   'api.ok': 'Retell API operational',
   'api.down': 'Retell API degraded',
+  'live.title': 'Active calls',
+  'live.desc': 'Real-time monitoring · patient context from CRM',
+  'live.connected': 'Connected · checked at',
+  'live.checking': 'Connecting…',
+  'live.none': 'No active calls right now',
+  'live.noneHint': 'Connection OK — auto-refresh every 5 s',
+  'live.failed': 'Failed to load active calls',
+  'live.retry': 'Retry',
+  'live.badge': 'Live',
+  'live.unknown': 'Unknown caller',
+  'live.agent': 'Agent',
+  'live.matchedLead': 'Matched lead',
+  'live.source': 'Source',
+  'live.callsCount': 'Calls',
+  'live.rdvScheduled': 'Appointment scheduled',
 }
 
 const DICTS: Record<Lang, Dict> = { fr, en }

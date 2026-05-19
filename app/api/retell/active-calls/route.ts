@@ -51,9 +51,16 @@ export async function GET(): Promise<NextResponse<ApiResponse<ActiveCallEnriched
         ? ((data as { calls: Record<string, unknown>[] }).calls)
         : []
 
+    // Robustness: only keep genuinely ongoing calls. If Retell ever ignores
+    // filter_criteria and returns everything, this prevents the Live tab
+    // from showing every historical call as "active".
+    const ongoing = callsRaw.filter(
+      (c) => (c.call_status as string | undefined) === 'ongoing'
+    )
+
     const leadByPhone = indexLeadsByPhone(leads)
 
-    const activeCalls: ActiveCallEnriched[] = callsRaw.map((call) => {
+    const activeCalls: ActiveCallEnriched[] = ongoing.map((call) => {
       const startTs = call.start_timestamp as number | string | undefined
       const startMs = startTs != null ? new Date(startTs).getTime() : NaN
       const direction =
