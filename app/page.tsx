@@ -17,13 +17,13 @@ import { DurationHistogram } from '@/components/dashboard/duration-histogram'
 import { VerbatimPanel } from '@/components/dashboard/verbatim-panel'
 import { AgentPerformance } from '@/components/dashboard/agent-performance'
 import { InsightsPanel } from '@/components/dashboard/ai-insights/insights-panel'
-import { TabPlaceholder } from '@/components/dashboard/tab-placeholder'
 import { DirectorView } from '@/components/dashboard/director/director-view'
 import { CallLogsTable } from '@/components/dashboard/call-logs-table'
 import { CallLogsFilters } from '@/components/dashboard/call-logs-filters'
 import { StatsExtras } from '@/components/dashboard/stats/stats-extras'
 import { CallDetailSheet } from '@/components/dashboard/call-detail-sheet'
-import { LiveMonitor } from '@/components/dashboard/live-monitor'
+import { LiveView } from '@/components/dashboard/live/live-view'
+import { ErrorsView } from '@/components/dashboard/errors/errors-view'
 import { MobileBottomNav } from '@/components/dashboard/mobile-bottom-nav'
 import { useDashboardData } from '@/lib/hooks/use-calls'
 import type { CallLogEnriched } from '@/lib/types'
@@ -94,13 +94,7 @@ export default function DashboardPage() {
             </TabsContent>
 
             <TabsContent value="erreurs" className="mt-6">
-              <TabPlaceholder
-                title="Erreurs & Alertes"
-                phase="Phase 5 — en construction"
-                description="Log des erreurs système, répondeurs à rappeler, robot awareness et anomalies. Les détecteurs sont déjà codés ; l'écran arrive après les Call Logs et les Statistiques."
-                ctaLabel="Voir les Statistiques"
-                onCta={() => setActiveTab('stats')}
-              />
+              <ErrorsView allCalls={allCalls} />
             </TabsContent>
 
             <TabsContent value="stats" className="mt-6 space-y-6">
@@ -178,7 +172,7 @@ export default function DashboardPage() {
             </TabsContent>
 
             <TabsContent value="live" className="mt-6">
-              <LiveMonitor />
+              <LiveView allCalls={allCalls} />
             </TabsContent>
           </Tabs>
 
@@ -193,15 +187,7 @@ export default function DashboardPage() {
               />
             )}
 
-            {activeTab === 'erreurs' && (
-              <TabPlaceholder
-                title="Erreurs & Alertes"
-                phase="Phase 5 — en construction"
-                description="Log des erreurs, répondeurs, robot awareness et anomalies arrivent après les autres onglets."
-                ctaLabel="Voir les Statistiques"
-                onCta={() => setActiveTab('stats')}
-              />
-            )}
+            {activeTab === 'erreurs' && <ErrorsView allCalls={allCalls} />}
 
             {activeTab === 'stats' && (
               <>
@@ -265,7 +251,7 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {activeTab === 'live' && <LiveMonitor />}
+            {activeTab === 'live' && <LiveView allCalls={allCalls} />}
           </div>
         </main>
       </div>
