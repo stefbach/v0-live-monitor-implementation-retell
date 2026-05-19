@@ -10,13 +10,19 @@ import {
   PhoneOutgoing,
   CheckCircle2,
   XCircle,
+  Link2,
+  Headphones,
+  FileText,
+  Eye,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { TableSkeleton } from './skeleton-loaders'
-import { computeEligibilityFromSummary } from '@/lib/eligibility'
-import type { CallLogEnriched, Qualification } from '@/lib/types'
+import { mapQualification } from '@/lib/qualifications'
+import { CRENEAUX } from '@/lib/timezone'
+import { agentLevel } from '@/lib/director-metrics'
+import type { CallLogEnriched } from '@/lib/types'
 
 interface Props {
   calls: CallLogEnriched[]
@@ -24,38 +30,18 @@ interface Props {
   onCallSelect?: (call: CallLogEnriched) => void
 }
 
-type SortField = 'startTime' | 'duration' | 'status' | 'cost' | 'attempt'
+type SortField = 'startTime' | 'duration' | 'cost' | 'phase'
 type SortDirection = 'asc' | 'desc'
 
-function formatDuration(seconds: number): string {
-  const mins = Math.floor(seconds / 60)
-  const secs = seconds % 60
-  return `${mins}:${secs.toString().padStart(2, '0')}`
+function fmtDur(seconds: number): string {
+  const m = Math.floor(seconds / 60)
+  const s = seconds % 60
+  return `${seconds}s (${m}:${s.toString().padStart(2, '0')})`
 }
 
-function formatUsd(cents: number | null | undefined): string {
+function fmtUsd(cents: number | null | undefined): string {
   if (cents == null) return '—'
   return `$${(cents / 100).toFixed(2)}`
-}
-
-const QUALIF_STYLE: Record<string, string> = {
-  'RDV MEDECIN': 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30',
-  'NOUVEAU DOSSIER': 'bg-blue-500/10 text-blue-500 border-blue-500/30',
-  'PAS INTERESSE': 'bg-red-500/10 text-red-400 border-red-500/30',
-  'PAS DE REPONSE': 'bg-amber-500/10 text-amber-500 border-amber-500/30',
-  'FAUX NUMERO': 'bg-rose-500/10 text-rose-400 border-rose-500/30',
-  'FOLLOW UP': 'bg-violet-500/10 text-violet-400 border-violet-500/30',
-  TRANSFERRED_TO_ISABELLE: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30',
-}
-
-function getQualifBadge(q: Qualification | null | undefined) {
-  if (!q) return <span className="text-xs text-muted-foreground">—</span>
-  const cls = QUALIF_STYLE[q] ?? 'bg-zinc-500/10 text-zinc-400 border-zinc-500/30'
-  return (
-    <Badge variant="outline" className={cls}>
-      {q}
-    </Badge>
-  )
 }
 
 export function CallLogsTable({ calls, isLoading, onCallSelect }: Props) {
@@ -64,55 +50,64 @@ export function CallLogsTable({ calls, isLoading, onCallSelect }: Props) {
   const [page, setPage] = useState(0)
   const pageSize = 20
 
+  // Which leads went through more than one distinct agent (chain icon)
+  const multiAgentLeads = useMemo(() => {
+    const byLead = new Map<string, Set<number>>()
+    for (const c of calls) {
+      const k = c.meta?.leadId ?? c.lead?.id
+      if (!k) continue
+      const lvl = agentLevel(c.agentName)
+      if (!lvl) continue
+      if (!byLead.has(k)) byLead.set(k, new Set())
+      byLead.get(k)!.add(lvl)
+    }
+    const s = new Set<string>()
+    for (const [k, levels] of byLead.entries()) if (levels.size > 1) s.add(k)
+    return s
+  }, [calls])
+
   const sorted = useMemo(() => {
     const result = [...calls]
     result.sort((a, b) => {
-      let comparison = 0
+      let cmp = 0
       switch (sortField) {
         case 'startTime':
-          comparison = new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+          cmp = new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
           break
         case 'duration':
-          comparison = a.duration - b.duration
-          break
-        case 'status':
-          comparison = a.status.localeCompare(b.status)
+          cmp = a.duration - b.duration
           break
         case 'cost':
-          comparison = (a.cost ?? 0) - (b.cost ?? 0)
+          cmp = (a.cost ?? 0) - (b.cost ?? 0)
           break
-        case 'attempt':
-          comparison = a.attemptNumber - b.attemptNumber
+        case 'phase':
+          cmp = (a.meta?.phase ?? '').localeCompare(b.meta?.phase ?? '')
           break
       }
-      return sortDirection === 'asc' ? comparison : -comparison
+      return sortDirection === 'asc' ? cmp : -cmp
     })
     return result
   }, [calls, sortField, sortDirection])
 
-  const paginated = useMemo(() => {
-    const start = page * pageSize
-    return sorted.slice(start, start + pageSize)
-  }, [sorted, page])
-
+  const paginated = useMemo(
+    () => sorted.slice(page * pageSize, page * pageSize + pageSize),
+    [sorted, page]
+  )
   const totalPages = Math.ceil(sorted.length / pageSize)
 
-  const handleSort = (field: SortField) => {
-    if (sortField === field) setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+  const handleSort = (f: SortField) => {
+    if (sortField === f) setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
     else {
-      setSortField(field)
+      setSortField(f)
       setSortDirection('desc')
     }
   }
-
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) return null
-    return sortDirection === 'asc' ? (
+  const SortIcon = ({ f }: { f: SortField }) =>
+    sortField !== f ? null : sortDirection === 'asc' ? (
       <ChevronUp className="h-3.5 w-3.5" />
     ) : (
       <ChevronDown className="h-3.5 w-3.5" />
     )
-  }
 
   if (isLoading) return <TableSkeleton rows={pageSize} />
 
@@ -121,164 +116,178 @@ export function CallLogsTable({ calls, isLoading, onCallSelect }: Props) {
       <CardHeader>
         <CardTitle className="text-base">Call logs</CardTitle>
         <CardDescription>
-          {sorted.length.toLocaleString()} calls match the current filters
+          {sorted.length.toLocaleString()} appels correspondent aux filtres
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="hidden md:block">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b text-left text-xs text-muted-foreground">
-                  <th className="pb-3 font-medium">
-                    <button onClick={() => handleSort('startTime')} className="flex items-center gap-1 hover:text-foreground">
-                      Time <SortIcon field="startTime" />
-                    </button>
-                  </th>
-                  <th className="pb-3 font-medium">Patient</th>
-                  <th className="pb-3 font-medium text-right">BMI</th>
-                  <th className="pb-3 font-medium">Elig.</th>
-                  <th className="pb-3 font-medium">Source</th>
-                  <th className="pb-3 font-medium">Qualification</th>
-                  <th className="pb-3 font-medium">Agent</th>
-                  <th className="pb-3 font-medium text-right">
-                    <button onClick={() => handleSort('attempt')} className="flex items-center gap-1 hover:text-foreground ml-auto">
-                      # <SortIcon field="attempt" />
-                    </button>
-                  </th>
-                  <th className="pb-3 font-medium text-center">Ans.</th>
-                  <th className="pb-3 font-medium text-right">
-                    <button onClick={() => handleSort('duration')} className="flex items-center gap-1 hover:text-foreground ml-auto">
-                      Dur. <SortIcon field="duration" />
-                    </button>
-                  </th>
-                  <th className="pb-3 font-medium text-right">
-                    <button onClick={() => handleSort('cost')} className="flex items-center gap-1 hover:text-foreground ml-auto">
-                      Cost <SortIcon field="cost" />
-                    </button>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginated.map((call) => {
-                  const lead = call.lead
-                  const elig = computeEligibilityFromSummary(lead)
-                  return (
-                    <tr
-                      key={call.id}
-                      className="border-b border-border/50 cursor-pointer hover:bg-muted/50 transition-colors"
-                      onClick={() => onCallSelect?.(call)}
-                    >
-                      <td className="py-3 text-sm">
-                        <div className="flex items-center gap-1.5">
-                          {call.direction === 'inbound' ? (
-                            <PhoneIncoming className="h-3.5 w-3.5 text-blue-500" />
-                          ) : (
-                            <PhoneOutgoing className="h-3.5 w-3.5 text-emerald-500" />
-                          )}
-                          {call.startTime ? format(new Date(call.startTime), 'MMM d, HH:mm') : '—'}
-                        </div>
-                      </td>
-                      <td className="py-3 text-sm">
-                        <div>
-                          <p className="font-medium truncate max-w-[160px]">
-                            {lead?.nom ?? call.userName ?? 'Unknown'}
-                          </p>
-                          <p className="text-xs text-muted-foreground font-mono">
-                            {call.direction === 'inbound' ? call.fromNumber : call.toNumber}
-                          </p>
-                        </div>
-                      </td>
-                      <td className="py-3 text-sm font-mono text-right">
-                        {lead?.bmi != null ? lead.bmi.toFixed(1) : '—'}
-                      </td>
-                      <td className="py-3">
-                        {elig.eligible ? (
-                          <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30 text-[10px]">
-                            ✓
-                          </Badge>
+        <div className="hidden lg:block overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b text-left text-xs text-muted-foreground">
+                <th className="pb-3 font-medium">Lead</th>
+                <th className="pb-3 font-medium">Numéro</th>
+                <th className="pb-3 font-medium">
+                  <button onClick={() => handleSort('phase')} className="flex items-center gap-1 hover:text-foreground">
+                    Phase / Créneau <SortIcon f="phase" />
+                  </button>
+                </th>
+                <th className="pb-3 font-medium">Agent(s)</th>
+                <th className="pb-3 font-medium text-right">
+                  <button onClick={() => handleSort('duration')} className="ml-auto flex items-center gap-1 hover:text-foreground">
+                    Durée <SortIcon f="duration" />
+                  </button>
+                </th>
+                <th className="pb-3 font-medium">Qualification</th>
+                <th className="pb-3 font-medium text-center">Répondu</th>
+                <th className="pb-3 font-medium">
+                  <button onClick={() => handleSort('startTime')} className="flex items-center gap-1 hover:text-foreground">
+                    Heure <SortIcon f="startTime" />
+                  </button>
+                </th>
+                <th className="pb-3 font-medium text-right">
+                  <button onClick={() => handleSort('cost')} className="ml-auto flex items-center gap-1 hover:text-foreground">
+                    Coût <SortIcon f="cost" />
+                  </button>
+                </th>
+                <th className="pb-3 font-medium text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paginated.map((call) => {
+                const lead = call.lead
+                const q = mapQualification(lead?.qualification)
+                const lvl = agentLevel(call.agentName)
+                const leadKey = call.meta?.leadId ?? lead?.id
+                const isMulti = leadKey ? multiAgentLeads.has(leadKey) : false
+                return (
+                  <tr
+                    key={call.id}
+                    className="cursor-pointer border-b border-border/50 transition-colors hover:bg-muted/50"
+                    onClick={() => onCallSelect?.(call)}
+                  >
+                    <td className="py-3 text-sm font-medium">
+                      <div className="flex items-center gap-1.5">
+                        {call.direction === 'inbound' ? (
+                          <PhoneIncoming className="h-3.5 w-3.5 shrink-0 text-blue-500" />
                         ) : (
-                          <span className="text-xs text-muted-foreground/60">—</span>
+                          <PhoneOutgoing className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
                         )}
-                      </td>
-                      <td className="py-3 text-xs text-muted-foreground truncate max-w-[100px]">
-                        {lead?.source_lead ?? '—'}
-                      </td>
-                      <td className="py-3">{getQualifBadge(lead?.qualification)}</td>
-                      <td className="py-3 text-sm truncate max-w-[120px]">{call.agentName}</td>
-                      <td className="py-3 text-sm font-mono text-right">{call.attemptNumber}</td>
-                      <td className="py-3 text-center">
-                        {call.answered ? (
-                          <CheckCircle2 className="h-4 w-4 text-emerald-500 inline" />
-                        ) : (
-                          <XCircle className="h-4 w-4 text-muted-foreground/40 inline" />
-                        )}
-                      </td>
-                      <td className="py-3 text-sm font-mono text-right">{formatDuration(call.duration)}</td>
-                      <td className="py-3 text-sm font-mono text-right text-muted-foreground">
-                        {formatUsd(call.cost)}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+                        <span className="max-w-[150px] truncate">
+                          {lead?.nom ?? call.userName ?? 'Inconnu'}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="py-3 font-mono text-xs text-muted-foreground">
+                      {lead?.numero_telephone ??
+                        (call.direction === 'inbound' ? call.fromNumber : call.toNumber)}
+                    </td>
+                    <td className="py-3 text-xs">
+                      <Badge variant="outline" className="mr-1">
+                        {call.meta?.phase ?? '—'}
+                      </Badge>
+                      <span className="text-muted-foreground">
+                        {CRENEAUX[call.creneau].short}
+                      </span>
+                    </td>
+                    <td className="py-3 text-sm">
+                      <span className="flex items-center gap-1">
+                        {isMulti && <Link2 className="h-3.5 w-3.5 text-cyan-500" />}
+                        <span className="max-w-[130px] truncate">
+                          {lvl ? `A${lvl} · ` : ''}
+                          {call.agentName}
+                        </span>
+                      </span>
+                    </td>
+                    <td className="py-3 text-right font-mono text-xs">
+                      {fmtDur(call.duration)}
+                    </td>
+                    <td className="py-3">
+                      <Badge variant="outline" className={q.badgeClass}>
+                        {q.label}
+                      </Badge>
+                    </td>
+                    <td className="py-3 text-center">
+                      {call.answered ? (
+                        <CheckCircle2 className="inline h-4 w-4 text-emerald-500" />
+                      ) : (
+                        <XCircle className="inline h-4 w-4 text-muted-foreground/40" />
+                      )}
+                    </td>
+                    <td className="py-3 text-xs">
+                      {call.startTime ? format(new Date(call.startTime), 'dd/MM HH:mm') : '—'}
+                    </td>
+                    <td className="py-3 text-right font-mono text-xs text-muted-foreground">
+                      {fmtUsd(call.cost)}
+                    </td>
+                    <td className="py-3">
+                      <div
+                        className="flex items-center justify-end gap-1"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          title="Écouter"
+                          onClick={() => onCallSelect?.(call)}
+                          className="rounded p-1 hover:bg-muted"
+                        >
+                          <Headphones className="h-4 w-4 text-muted-foreground" />
+                        </button>
+                        <button
+                          title="Transcription"
+                          onClick={() => onCallSelect?.(call)}
+                          className="rounded p-1 hover:bg-muted"
+                        >
+                          <FileText className="h-4 w-4 text-muted-foreground" />
+                        </button>
+                        <button
+                          title="Détails"
+                          onClick={() => onCallSelect?.(call)}
+                          className="rounded p-1 hover:bg-muted"
+                        >
+                          <Eye className="h-4 w-4 text-muted-foreground" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
 
-        {/* Mobile cards */}
-        <div className="flex flex-col gap-3 md:hidden">
+        {/* Compact cards on small screens */}
+        <div className="flex flex-col gap-3 lg:hidden">
           {paginated.map((call) => {
             const lead = call.lead
-            const elig = computeEligibilityFromSummary(lead)
+            const q = mapQualification(lead?.qualification)
             return (
-              <div
+              <button
                 key={call.id}
-                className="rounded-lg border border-border/50 p-4 cursor-pointer hover:bg-muted/50 transition-colors"
                 onClick={() => onCallSelect?.(call)}
+                className="rounded-lg border border-border/50 p-3 text-left transition-colors hover:bg-muted/50"
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted shrink-0">
-                      {call.direction === 'inbound' ? (
-                        <PhoneIncoming className="h-5 w-5 text-blue-500" />
-                      ) : (
-                        <PhoneOutgoing className="h-5 w-5 text-emerald-500" />
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-medium truncate flex items-center gap-1">
-                        {lead?.nom ?? 'Unknown'}
-                        {elig.eligible && (
-                          <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30 text-[10px]">
-                            Elig
-                          </Badge>
-                        )}
-                      </p>
-                      <p className="text-xs text-muted-foreground truncate">{call.agentName}</p>
-                    </div>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">
+                      {lead?.nom ?? 'Inconnu'}
+                    </p>
+                    <p className="truncate font-mono text-xs text-muted-foreground">
+                      {lead?.numero_telephone ?? call.toNumber}
+                    </p>
                   </div>
-                  {getQualifBadge(lead?.qualification)}
-                </div>
-                <div className="mt-2 flex items-center justify-between gap-2 text-xs">
-                  <span className="text-muted-foreground">
-                    Call #{call.attemptNumber} · BMI {lead?.bmi != null ? lead.bmi.toFixed(1) : '—'}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    {call.answered ? (
-                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                    ) : (
-                      <XCircle className="h-3.5 w-3.5 text-muted-foreground/40" />
-                    )}
-                  </span>
+                  <Badge variant="outline" className={q.badgeClass}>
+                    {q.label}
+                  </Badge>
                 </div>
                 <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-                  <span>{call.startTime ? format(new Date(call.startTime), 'MMM d, HH:mm') : '—'}</span>
+                  <span>
+                    {call.meta?.phase ?? '—'} · {CRENEAUX[call.creneau].short} ·{' '}
+                    {call.agentName}
+                  </span>
                   <span className="font-mono">
-                    {formatDuration(call.duration)} · {formatUsd(call.cost)}
+                    {call.duration}s · {fmtUsd(call.cost)}
                   </span>
                 </div>
-              </div>
+              </button>
             )
           })}
         </div>
@@ -286,15 +295,26 @@ export function CallLogsTable({ calls, isLoading, onCallSelect }: Props) {
         {totalPages > 1 && (
           <div className="mt-4 flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
-              Showing {page * pageSize + 1}-{Math.min((page + 1) * pageSize, sorted.length)} of{' '}
+              {page * pageSize + 1}-
+              {Math.min((page + 1) * pageSize, sorted.length)} sur{' '}
               {sorted.length.toLocaleString()}
             </p>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => setPage(page - 1)} disabled={page === 0}>
-                Previous
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(page - 1)}
+                disabled={page === 0}
+              >
+                Précédent
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setPage(page + 1)} disabled={page >= totalPages - 1}>
-                Next
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(page + 1)}
+                disabled={page >= totalPages - 1}
+              >
+                Suivant
               </Button>
             </div>
           </div>
@@ -303,7 +323,9 @@ export function CallLogsTable({ calls, isLoading, onCallSelect }: Props) {
         {sorted.length === 0 && (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <Phone className="h-12 w-12 text-muted-foreground/50" />
-            <p className="mt-4 text-sm text-muted-foreground">No calls match the current filters.</p>
+            <p className="mt-4 text-sm text-muted-foreground">
+              Aucun appel ne correspond aux filtres.
+            </p>
           </div>
         )}
       </CardContent>

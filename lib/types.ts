@@ -303,6 +303,8 @@ export type EligibilityFilter = 'all' | 'eligible' | 'ineligible' | 'unknown'
 
 export type AnsweredFilter = 'all' | 'answered' | 'no_answer'
 
+export type TriState = 'all' | 'yes' | 'no'
+
 export interface DashboardFilters {
   period: PeriodId
   customStart: string | null // ISO date
@@ -315,6 +317,12 @@ export interface DashboardFilters {
   eligibility: EligibilityFilter
   answered: AnsweredFilter
   search: string
+  // ─ Call-Logs advanced filters ─
+  phases: string[] // J1 / J3 / J5 / Inconnu
+  creneaux: CreneauKey[]
+  voicemail: TriState // répondeur détecté (in_voicemail || voicemailSuspected)
+  robot: TriState // robot awareness
+  minDurationSec: number | null // manual "> X seconds"
 }
 
 // ─── Heatmap (24×7) ─────────────────────────────────────────────────────────

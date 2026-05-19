@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import {
   Phone,
@@ -14,6 +15,12 @@ import {
   CalendarCheck,
   DollarSign,
   FileText,
+  ArrowRight,
+  Mail,
+  Scale,
+  AlertOctagon,
+  UserPlus,
+  Loader2,
 } from 'lucide-react'
 import {
   Sheet,
@@ -23,16 +30,20 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AudioPlayer } from './audio-player'
 import { TranscriptViewer } from './transcript-viewer'
 import { useCallDetail } from '@/lib/hooks/use-calls'
+import { agentLevel } from '@/lib/director-metrics'
 import type { CallLogEnriched, Lead, Qualification } from '@/lib/types'
 
 interface CallDetailSheetProps {
   callId: string | null
   open: boolean
   onOpenChange: (open: boolean) => void
+  allCalls?: CallLogEnriched[]
+  onSelectCall?: (call: CallLogEnriched) => void
 }
 
 function formatDuration(seconds: number): string {
@@ -85,9 +96,32 @@ function ageFromDob(dob: string | null): string {
   return `${years}`
 }
 
-export function CallDetailSheet({ callId, open, onOpenChange }: CallDetailSheetProps) {
+export function CallDetailSheet({
+  callId,
+  open,
+  onOpenChange,
+  allCalls = [],
+  onSelectCall,
+}: CallDetailSheetProps) {
   const { call, isLoading } = useCallDetail(callId)
   const fullLead = (call as (CallLogEnriched & { fullLead?: Lead | null }) | null)?.fullLead
+  const [audioTime, setAudioTime] = useState(0)
+
+  // Agent-chain timeline: the lead's other calls (handoff is across
+  // separate call_ids linked by metadata.lead_id).
+  const siblingCalls = useMemo(() => {
+    if (!call) return []
+    const leadId = call.meta?.leadId ?? call.lead?.id
+    if (!leadId) return []
+    return allCalls
+      .filter(
+        (c) =>
+          (c.meta?.leadId ?? c.lead?.id) === leadId
+      )
+      .sort(
+        (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+      )
+  }, [call, allCalls])
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -242,24 +276,103 @@ export function CallDetailSheet({ callId, open, onOpenChange }: CallDetailSheetP
               <Field label="To" value={call.toNumber} icon={<Phone className="h-3 w-3" />} mono />
             </section>
 
+            {/* AI-extracted data cards */}
+            {(call.analysis || fullLead) && (
+              <section className="space-y-2">
+                <p className="text-sm font-medium flex items-center gap-1">
+                  <Bot className="h-3.5 w-3.5 text-violet-500" /> Données extraites par l&apos;IA
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <DataCard icon={<Mail className="h-3.5 w-3.5" />} label="Email" value={fullLead?.email ?? '—'} />
+                  <DataCard icon={<Scale className="h-3.5 w-3.5" />} label="BMI" value={fullLead?.bmi != null ? fullLead.bmi.toFixed(1) : '—'} />
+                  <DataCard icon={<Pill className="h-3.5 w-3.5" />} label="Médicaments" value={fullLead?.current_medications ?? '—'} />
+                  <DataCard icon={<Stethoscope className="h-3.5 w-3.5" />} label="Chirurgies passées" value={fullLead?.past_surgeries ?? '—'} />
+                  <DataCard icon={<HeartPulse className="h-3.5 w-3.5" />} label="Allergies" value={fullLead?.allergies ?? '—'} />
+                  <DataCard icon={<AlertOctagon className="h-3.5 w-3.5" />} label="Préoccupation principale" value={call.analysis?.mainConcern ?? '—'} />
+                  <DataCard icon={<AlertOctagon className="h-3.5 w-3.5" />} label="État émotionnel" value={call.analysis?.emotionalState ?? '—'} />
+                  <DataCard icon={<CalendarCheck className="h-3.5 w-3.5" />} label="Dispo. annoncée" value={call.analysis?.availability ?? '—'} />
+                </div>
+                {call.analysis?.objectionsRaised && (
+                  <p className="rounded-md bg-muted/40 p-2 text-xs">
+                    <span className="font-medium">Objections : </span>
+                    {call.analysis.objectionsRaised}
+                  </p>
+                )}
+              </section>
+            )}
+
+            {/* Agent-chain timeline (sibling calls of the lead) */}
+            {siblingCalls.length > 1 && (
+              <section className="space-y-2">
+                <p className="text-sm font-medium flex items-center gap-1">
+                  <ArrowRight className="h-3.5 w-3.5 text-cyan-500" /> Parcours du lead ({siblingCalls.length} appels)
+                </p>
+                <ol className="space-y-1.5">
+                  {siblingCalls.map((sc, i) => {
+                    const lvl = agentLevel(sc.agentName)
+                    const isCurrent = sc.callId === call.callId
+                    return (
+                      <li key={sc.callId}>
+                        <button
+                          disabled={isCurrent}
+                          onClick={() => onSelectCall?.(sc)}
+                          className={`flex w-full items-center justify-between gap-2 rounded-md border p-2 text-left text-xs transition-colors ${
+                            isCurrent
+                              ? 'border-cyan-500/50 bg-cyan-500/5'
+                              : 'hover:bg-muted/50'
+                          }`}
+                        >
+                          <span className="flex items-center gap-2 min-w-0">
+                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted font-mono">
+                              {i + 1}
+                            </span>
+                            <span className="truncate">
+                              {lvl ? `Agent ${lvl}` : ''} {sc.agentName}
+                            </span>
+                          </span>
+                          <span className="shrink-0 text-muted-foreground">
+                            {sc.startTime ? format(new Date(sc.startTime), 'dd/MM HH:mm') : '—'}
+                            {sc.meta?.phase ? ` · ${sc.meta.phase}` : ''}
+                            {isCurrent ? ' · (en cours)' : ''}
+                          </span>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ol>
+              </section>
+            )}
+
+            {/* Confier à un humain */}
+            {(call.meta?.leadId || call.lead?.id) && (
+              <HandoffButtons
+                leadId={(call.meta?.leadId ?? call.lead?.id) as string}
+                leadName={call.lead?.nom ?? null}
+              />
+            )}
+
             {call.summary && (
               <section className="space-y-2">
-                <p className="text-sm font-medium">Summary</p>
+                <p className="text-sm font-medium">Résumé</p>
                 <p className="text-sm text-muted-foreground rounded-lg bg-muted/50 p-3">{call.summary}</p>
               </section>
             )}
 
-            {call.recordingUrl && call.transcript && (
+            {call.recordingUrl && (
               <section className="space-y-2">
-                <p className="text-sm font-medium">Recording</p>
-                <AudioPlayer src={call.recordingUrl} transcript={call.transcript} />
+                <p className="text-sm font-medium">Enregistrement</p>
+                <AudioPlayer
+                  src={call.recordingUrl}
+                  transcript={call.transcript ?? []}
+                  onTimeUpdate={setAudioTime}
+                />
               </section>
             )}
 
             {call.transcript && call.transcript.length > 0 && (
               <section className="space-y-2">
-                <p className="text-sm font-medium">Transcript</p>
-                <TranscriptViewer transcript={call.transcript} currentTime={0} />
+                <p className="text-sm font-medium">Transcription synchronisée</p>
+                <TranscriptViewer transcript={call.transcript} currentTime={audioTime} />
               </section>
             )}
           </div>
@@ -293,6 +406,92 @@ function Field({
       </p>
       <p className={`text-sm font-medium ${mono ? 'font-mono' : ''}`}>{value}</p>
     </div>
+  )
+}
+
+function DataCard({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode
+  label: string
+  value: string
+}) {
+  return (
+    <div className="rounded-md border bg-muted/20 p-2">
+      <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
+        {icon}
+        {label}
+      </p>
+      <p className="mt-0.5 truncate text-sm font-medium" title={value}>
+        {value}
+      </p>
+    </div>
+  )
+}
+
+function HandoffButtons({
+  leadId,
+  leadName,
+}: {
+  leadId: string
+  leadName: string | null
+}) {
+  const [busy, setBusy] = useState<string | null>(null)
+  const [done, setDone] = useState<string | null>(null)
+
+  const assign = async (to: string) => {
+    setBusy(to)
+    try {
+      const res = await fetch('/api/dashboard/assignments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          leadId,
+          assignedTo: to,
+          reason: 'Confié depuis la fiche appel',
+          assignedBy: 'dashboard',
+        }),
+      })
+      if (res.ok) setDone(to)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <section className="space-y-2">
+      <p className="text-sm font-medium flex items-center gap-1">
+        <UserPlus className="h-3.5 w-3.5 text-violet-500" /> Confier à un humain
+      </p>
+      {done ? (
+        <Badge className="bg-emerald-500 text-white">
+          {leadName ?? 'Lead'} confié à {done}
+        </Badge>
+      ) : (
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!!busy}
+            onClick={() => assign('Rain')}
+          >
+            {busy === 'Rain' && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+            Confier à Rain
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!!busy}
+            onClick={() => assign('Summer')}
+          >
+            {busy === 'Summer' && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+            Confier à Summer
+          </Button>
+        </div>
+      )}
+    </section>
   )
 }
 

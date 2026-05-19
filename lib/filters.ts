@@ -6,6 +6,8 @@ import type {
   AttemptBucketId,
   EligibilityFilter,
   AnsweredFilter,
+  TriState,
+  CreneauKey,
 } from './types'
 import { computeEligibilityFromSummary } from './eligibility'
 
@@ -21,6 +23,11 @@ export const DEFAULT_FILTERS: DashboardFilters = {
   eligibility: 'all',
   answered: 'all',
   search: '',
+  phases: [],
+  creneaux: [],
+  voicemail: 'all',
+  robot: 'all',
+  minDurationSec: null,
 }
 
 export const DURATION_BUCKETS: { id: DurationBucketId; label: string; test: (s: number) => boolean }[] = [
@@ -98,6 +105,8 @@ export function applyFilters(
   const srcSet = new Set(filters.sources ?? [])
   const agSet = new Set(filters.agents ?? [])
   const attSet = new Set(filters.attempts ?? [])
+  const phaseSet = new Set(filters.phases ?? [])
+  const creneauSet = new Set(filters.creneaux ?? [])
   const search = (filters.search ?? '').trim().toLowerCase()
 
   return calls.filter((c) => {
@@ -113,6 +122,24 @@ export function applyFilters(
     if (srcSet.size > 0 && !srcSet.has(c.lead?.source_lead ?? '')) return false
     if (agSet.size > 0 && !agSet.has(c.agentId)) return false
     if (attSet.size > 0 && !attSet.has(attemptBucket(c.attemptNumber))) return false
+
+    if (phaseSet.size > 0 && !phaseSet.has(c.meta?.phase ?? 'Inconnu')) return false
+    if (creneauSet.size > 0 && !creneauSet.has(c.creneau)) return false
+
+    if (filters.minDurationSec != null && c.duration <= filters.minDurationSec)
+      return false
+
+    if (filters.voicemail !== 'all') {
+      const vm = !!c.inVoicemail || c.voicemailSuspected
+      if (filters.voicemail === 'yes' && !vm) return false
+      if (filters.voicemail === 'no' && vm) return false
+    }
+
+    if (filters.robot !== 'all') {
+      const ra = c.robotAwareness === true
+      if (filters.robot === 'yes' && !ra) return false
+      if (filters.robot === 'no' && ra) return false
+    }
 
     if (filters.answered !== 'all') {
       if (filters.answered === 'answered' && !c.answered) return false
@@ -151,6 +178,11 @@ export function filtersToSearchParams(f: DashboardFilters): URLSearchParams {
   if (f.eligibility !== 'all') sp.set('elig', f.eligibility)
   if (f.answered !== 'all') sp.set('ans', f.answered)
   if (f.search) sp.set('s', f.search)
+  if (f.phases?.length) sp.set('ph', f.phases.join(','))
+  if (f.creneaux?.length) sp.set('cr', f.creneaux.join(','))
+  if (f.voicemail && f.voicemail !== 'all') sp.set('vm', f.voicemail)
+  if (f.robot && f.robot !== 'all') sp.set('rb', f.robot)
+  if (f.minDurationSec != null) sp.set('mind', String(f.minDurationSec))
   return sp
 }
 
@@ -168,5 +200,10 @@ export function searchParamsToFilters(sp: URLSearchParams): DashboardFilters {
     eligibility: (sp.get('elig') as EligibilityFilter | null) ?? 'all',
     answered: (sp.get('ans') as AnsweredFilter | null) ?? 'all',
     search: sp.get('s') ?? '',
+    phases: sp.get('ph')?.split(',').filter(Boolean) ?? [],
+    creneaux: (sp.get('cr')?.split(',').filter(Boolean) ?? []) as CreneauKey[],
+    voicemail: (sp.get('vm') as TriState | null) ?? 'all',
+    robot: (sp.get('rb') as TriState | null) ?? 'all',
+    minDurationSec: sp.get('mind') ? Number(sp.get('mind')) : null,
   }
 }

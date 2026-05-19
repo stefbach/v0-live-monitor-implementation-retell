@@ -20,6 +20,7 @@ import { InsightsPanel } from '@/components/dashboard/ai-insights/insights-panel
 import { TabPlaceholder } from '@/components/dashboard/tab-placeholder'
 import { DirectorView } from '@/components/dashboard/director/director-view'
 import { CallLogsTable } from '@/components/dashboard/call-logs-table'
+import { CallLogsFilters } from '@/components/dashboard/call-logs-filters'
 import { CallDetailSheet } from '@/components/dashboard/call-detail-sheet'
 import { LiveMonitor } from '@/components/dashboard/live-monitor'
 import { MobileBottomNav } from '@/components/dashboard/mobile-bottom-nav'
@@ -160,7 +161,8 @@ export default function DashboardPage() {
               <InsightsPanel filteredCalls={filteredCalls} />
             </TabsContent>
 
-            <TabsContent value="calls" className="mt-6">
+            <TabsContent value="calls" className="mt-6 space-y-4">
+              <CallLogsFilters />
               <CallLogsTable
                 calls={filteredCalls}
                 isLoading={isLoading}
@@ -241,11 +243,14 @@ export default function DashboardPage() {
             {activeTab === 'insights' && <InsightsPanel filteredCalls={filteredCalls} />}
 
             {activeTab === 'calls' && (
-              <CallLogsTable
-                calls={filteredCalls}
-                isLoading={isLoading}
-                onCallSelect={handleCallSelect}
-              />
+              <div className="space-y-4">
+                <CallLogsFilters />
+                <CallLogsTable
+                  calls={filteredCalls}
+                  isLoading={isLoading}
+                  onCallSelect={handleCallSelect}
+                />
+              </div>
             )}
 
             {activeTab === 'live' && <LiveMonitor />}
@@ -259,6 +264,8 @@ export default function DashboardPage() {
         callId={selectedCallId}
         open={isSheetOpen}
         onOpenChange={setIsSheetOpen}
+        allCalls={allCalls}
+        onSelectCall={handleCallSelect}
       />
     </div>
   )
