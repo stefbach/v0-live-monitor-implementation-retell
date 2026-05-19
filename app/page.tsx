@@ -18,6 +18,7 @@ import { VerbatimPanel } from '@/components/dashboard/verbatim-panel'
 import { AgentPerformance } from '@/components/dashboard/agent-performance'
 import { InsightsPanel } from '@/components/dashboard/ai-insights/insights-panel'
 import { TabPlaceholder } from '@/components/dashboard/tab-placeholder'
+import { DirectorView } from '@/components/dashboard/director/director-view'
 import { CallLogsTable } from '@/components/dashboard/call-logs-table'
 import { CallDetailSheet } from '@/components/dashboard/call-detail-sheet'
 import { LiveMonitor } from '@/components/dashboard/live-monitor'
@@ -26,7 +27,7 @@ import { useDashboardData } from '@/lib/hooks/use-calls'
 import type { CallLogEnriched } from '@/lib/types'
 
 export default function DashboardPage() {
-  const [activeTab, setActiveTab] = useState('stats')
+  const [activeTab, setActiveTab] = useState('directeur')
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null)
   const [isSheetOpen, setIsSheetOpen] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -65,7 +66,7 @@ export default function DashboardPage() {
           {/* Desktop Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="hidden md:block">
             <TabsList>
-              <TabsTrigger value="directeur">🏠 Vue Directeur</TabsTrigger>
+              <TabsTrigger value="directeur">🏠 Vue d&apos;ensemble</TabsTrigger>
               <TabsTrigger value="stats">📊 Statistiques</TabsTrigger>
               <TabsTrigger value="calls">📋 Call Logs</TabsTrigger>
               <TabsTrigger value="live" className="gap-2">
@@ -82,12 +83,11 @@ export default function DashboardPage() {
             </TabsList>
 
             <TabsContent value="directeur" className="mt-6">
-              <TabPlaceholder
-                title="Vue Directeur"
-                phase="Phase 2 — en construction"
-                description="Le tableau de bord opérationnel (KPIs cliquables, qualifications CRM, suivi J1/J3/J5, dossiers à confier, section agents) arrive à la prochaine étape. La structure de données est déjà en place."
-                ctaLabel="Voir les Statistiques en attendant"
-                onCta={() => setActiveTab('stats')}
+              <DirectorView
+                filteredCalls={filteredCalls}
+                leads={leads}
+                isLoading={isLoading}
+                onSelectCall={handleCallSelect}
               />
             </TabsContent>
 
@@ -95,7 +95,7 @@ export default function DashboardPage() {
               <TabPlaceholder
                 title="Erreurs & Alertes"
                 phase="Phase 5 — en construction"
-                description="Log des erreurs système, répondeurs à rappeler, robot awareness et anomalies. Les détecteurs sont déjà codés ; l'écran arrive après la Vue Directeur, les Call Logs et les Statistiques."
+                description="Log des erreurs système, répondeurs à rappeler, robot awareness et anomalies. Les détecteurs sont déjà codés ; l'écran arrive après les Call Logs et les Statistiques."
                 ctaLabel="Voir les Statistiques"
                 onCta={() => setActiveTab('stats')}
               />
@@ -176,12 +176,11 @@ export default function DashboardPage() {
           {/* Mobile Content */}
           <div className="md:hidden space-y-6">
             {activeTab === 'directeur' && (
-              <TabPlaceholder
-                title="Vue Directeur"
-                phase="Phase 2 — en construction"
-                description="Le tableau de bord opérationnel arrive à la prochaine étape."
-                ctaLabel="Voir les Statistiques"
-                onCta={() => setActiveTab('stats')}
+              <DirectorView
+                filteredCalls={filteredCalls}
+                leads={leads}
+                isLoading={isLoading}
+                onSelectCall={handleCallSelect}
               />
             )}
 

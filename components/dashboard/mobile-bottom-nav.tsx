@@ -9,7 +9,7 @@ interface MobileBottomNavProps {
 }
 
 const tabs = [
-  { id: 'directeur', label: 'Directeur', icon: Home },
+  { id: 'directeur', label: 'Aperçu', icon: Home },
   { id: 'stats', label: 'Stats', icon: BarChart3 },
   { id: 'calls', label: 'Calls', icon: List },
   { id: 'live', label: 'Live', icon: Radio },
