@@ -6,8 +6,6 @@ import {
   ChevronUp,
   ChevronDown,
   Phone,
-  PhoneIncoming,
-  PhoneOutgoing,
   CheckCircle2,
   XCircle,
   Link2,
@@ -19,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { TableSkeleton } from './skeleton-loaders'
+import { DirectionIcon } from './direction-indicator'
 import { QUAL_META } from '@/lib/qualifications'
 import { CRENEAUX } from '@/lib/timezone'
 import { agentLevel } from '@/lib/director-metrics'
@@ -175,11 +174,11 @@ export function CallLogsTable({
                   >
                     <td className="py-3 text-sm font-medium">
                       <div className="flex items-center gap-1.5">
-                        {call.direction === 'inbound' ? (
-                          <PhoneIncoming className="h-3.5 w-3.5 shrink-0 text-blue-500" />
-                        ) : (
-                          <PhoneOutgoing className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
-                        )}
+                        <DirectionIcon
+                          direction={call.direction}
+                          size="sm"
+                          className="shrink-0"
+                        />
                         <span className="max-w-[150px] truncate">
                           {lead?.nom ?? call.userName ?? 'Inconnu'}
                         </span>

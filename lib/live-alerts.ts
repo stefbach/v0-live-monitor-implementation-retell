@@ -83,6 +83,7 @@ export interface RepondeurLead {
   duration: number
   time: string
   inVoicemail: boolean
+  direction: 'inbound' | 'outbound'
 }
 
 export function computeRepondeurs(calls: CallLogEnriched[]): RepondeurLead[] {
@@ -97,6 +98,7 @@ export function computeRepondeurs(calls: CallLogEnriched[]): RepondeurLead[] {
       duration: c.duration,
       time: c.startTime,
       inVoicemail: !!c.inVoicemail,
+      direction: c.direction,
     }))
 }
 
@@ -106,6 +108,7 @@ export interface RobotLead {
   name: string | null
   phone: string | null
   time: string
+  direction: 'inbound' | 'outbound'
 }
 
 export function computeRobotLeads(calls: CallLogEnriched[]): RobotLead[] {
@@ -118,6 +121,7 @@ export function computeRobotLeads(calls: CallLogEnriched[]): RobotLead[] {
       name: c.lead?.nom ?? null,
       phone: c.lead?.numero_telephone ?? c.toNumber ?? null,
       time: c.startTime,
+      direction: c.direction,
     }))
 }
 

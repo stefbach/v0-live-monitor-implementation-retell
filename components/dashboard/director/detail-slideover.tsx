@@ -1,7 +1,8 @@
 'use client'
 
 import { format } from 'date-fns'
-import { PhoneIncoming, PhoneOutgoing, CheckCircle2, XCircle } from 'lucide-react'
+import { CheckCircle2, XCircle } from 'lucide-react'
+import { DirectionIcon } from '../direction-indicator'
 import {
   Sheet,
   SheetContent,
@@ -77,11 +78,7 @@ export function DetailSlideOver({
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted">
-                    {c.direction === 'inbound' ? (
-                      <PhoneIncoming className="h-4 w-4 text-blue-500" />
-                    ) : (
-                      <PhoneOutgoing className="h-4 w-4 text-emerald-500" />
-                    )}
+                    <DirectionIcon direction={c.direction} size="md" />
                   </div>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">

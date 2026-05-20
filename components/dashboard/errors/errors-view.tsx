@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useDashboardErrors } from '@/lib/hooks/use-dashboard'
+import { DirectionIcon } from '../direction-indicator'
 import {
   computeRepondeurs,
   computeRobotLeads,
@@ -195,7 +196,8 @@ export function ErrorsView({ allCalls }: Props) {
                       className="flex items-center justify-between gap-2 rounded-md border p-2.5"
                     >
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">
+                        <p className="flex items-center gap-1.5 truncate text-sm font-medium">
+                          <DirectionIcon direction={r.direction} size="sm" />
                           {r.name ?? 'Inconnu'}{' '}
                           <span className="font-mono text-xs text-muted-foreground">
                             {r.phone}
@@ -256,7 +258,8 @@ export function ErrorsView({ allCalls }: Props) {
                     className="flex items-center justify-between gap-2 rounded-md border border-red-500/30 bg-red-950/10 p-2.5"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">
+                      <p className="flex items-center gap-1.5 truncate text-sm font-medium">
+                        <DirectionIcon direction={r.direction} size="sm" />
                         {r.name ?? 'Inconnu'}{' '}
                         <span className="font-mono text-xs text-muted-foreground">
                           {r.phone}

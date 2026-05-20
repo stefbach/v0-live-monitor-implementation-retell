@@ -7,8 +7,6 @@ import {
   Clock,
   User,
   Bot,
-  PhoneIncoming,
-  PhoneOutgoing,
   HeartPulse,
   Pill,
   Stethoscope,
@@ -39,6 +37,7 @@ import { agentLevel } from '@/lib/director-metrics'
 import { effectiveQualKey } from '@/lib/rdv'
 import { QUAL_META } from '@/lib/qualifications'
 import { formatBmi } from '@/lib/bmi'
+import { DirectionIcon } from './direction-indicator'
 import type { CallLogEnriched, Lead, Qualification } from '@/lib/types'
 
 interface CallDetailSheetProps {
@@ -166,11 +165,11 @@ export function CallDetailSheet({
               })()}
               {call.direction === 'inbound' ? (
                 <Badge variant="outline" className="gap-1">
-                  <PhoneIncoming className="h-3 w-3" /> Inbound
+                  <DirectionIcon direction="inbound" size="sm" /> Entrant
                 </Badge>
               ) : (
                 <Badge variant="outline" className="gap-1">
-                  <PhoneOutgoing className="h-3 w-3" /> Outbound
+                  <DirectionIcon direction="outbound" size="sm" /> Sortant
                 </Badge>
               )}
               {call.cost != null && (

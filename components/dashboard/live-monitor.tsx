@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Phone, PhoneIncoming, PhoneOutgoing, Radio, User, Activity } from 'lucide-react'
+import { Phone, Radio, User, Activity } from 'lucide-react'
+import { DirectionIcon } from './direction-indicator'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useActiveCalls } from '@/lib/hooks/use-calls'
@@ -62,11 +63,7 @@ function LiveCallCard({ call }: { call: ActiveCallEnriched }) {
       <CardContent className="pt-5 space-y-3">
         <div className="flex items-start gap-3">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500/10">
-            {call.direction === 'inbound' ? (
-              <PhoneIncoming className="h-6 w-6 text-emerald-500" />
-            ) : (
-              <PhoneOutgoing className="h-6 w-6 text-emerald-500" />
-            )}
+            <DirectionIcon direction={call.direction} size="lg" />
           </div>
 
           <div className="flex-1 min-w-0">

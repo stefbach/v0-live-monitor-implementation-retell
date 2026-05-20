@@ -151,7 +151,8 @@ export default function DashboardPage() {
               </div>
 
               <AgentPerformance
-                agents={businessMetrics?.agents ?? []}
+                filteredCalls={filteredCalls}
+                confirmedRdvLeadKeys={confirmedRdvLeadKeys}
                 isLoading={isLoading}
               />
 
@@ -233,7 +234,8 @@ export default function DashboardPage() {
                 <DurationHistogram calls={filteredCalls} isLoading={isLoading} />
                 <VerbatimPanel calls={filteredCalls} isLoading={isLoading} />
                 <AgentPerformance
-                  agents={businessMetrics?.agents ?? []}
+                  filteredCalls={filteredCalls}
+                  confirmedRdvLeadKeys={confirmedRdvLeadKeys}
                   isLoading={isLoading}
                 />
                 <StatsExtras
