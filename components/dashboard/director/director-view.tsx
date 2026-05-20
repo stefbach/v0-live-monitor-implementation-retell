@@ -332,28 +332,6 @@ export function DirectorView({
                 </button>
               )
             })}
-            {/* Autres / Non classifiés — capture tout statut Retell hors des 8 */}
-            <button
-              onClick={() =>
-                setPanel({
-                  title: 'Autres / Non classifiés',
-                  calls: callsForQualification(filteredCalls, 'autre'),
-                  raw: true,
-                })
-              }
-              className="rounded-lg border border-l-4 border-l-zinc-500 bg-card p-4 text-left transition-shadow hover:shadow-md"
-            >
-              <div className="flex items-center justify-between">
-                <span className="h-2.5 w-2.5 rounded-sm bg-zinc-500" />
-                <span className="text-2xl font-bold tabular-nums">
-                  {(qualCounts.autre ?? 0).toLocaleString()}
-                </span>
-              </div>
-              <p className="mt-2 text-sm font-medium">Autres / Non classifiés</p>
-              <p className="text-[10px] text-muted-foreground">
-                statuts Retell hors des 8 catégories
-              </p>
-            </button>
           </div>
         </CardContent>
       </Card>

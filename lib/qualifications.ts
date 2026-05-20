@@ -19,6 +19,7 @@ export type QualKey =
   | 'rappel'
   | 'pas_interesse'
   | 'pas_de_reponse'
+  | 'repondeur'
   | 'faux_numero'
   | 'nouveau_dossier'
   | 'non_eligible'
@@ -41,6 +42,7 @@ const RAW_TO_KEY: Record<string, QualKey> = {
   RAPPEL: 'rappel',
   'PAS INTERESSE': 'pas_interesse',
   'PAS DE REPONSE': 'pas_de_reponse',
+  REPONDEUR: 'repondeur',
   'FAUX NUMERO': 'faux_numero',
   'NOUVEAU DOSSIER': 'nouveau_dossier',
   'NE PAS RAPPELER': 'ne_pas_rappeler',
@@ -83,6 +85,13 @@ export const QUAL_META: Record<QualKey, QualMeta> = {
     dotClass: 'bg-zinc-500',
     cardAccent: 'border-l-zinc-500',
   },
+  repondeur: {
+    key: 'repondeur',
+    label: 'REPONDEUR',
+    badgeClass: 'bg-amber-500/15 text-amber-500 border-amber-500/40',
+    dotClass: 'bg-amber-500',
+    cardAccent: 'border-l-amber-500',
+  },
   faux_numero: {
     key: 'faux_numero',
     label: 'FAUX NUMERO',
@@ -120,12 +129,13 @@ export const QUAL_META: Record<QualKey, QualMeta> = {
   },
 }
 
-// The 8 cards shown on the Vue Directeur, in display order.
+// Cards shown on the Vue d'ensemble, in display order.
 export const QUALIFICATION_CARDS: QualKey[] = [
   'rdv_confirme',
   'rappel',
   'pas_interesse',
   'pas_de_reponse',
+  'repondeur',
   'faux_numero',
   'non_eligible',
   'nouveau_dossier',

@@ -127,6 +127,7 @@ export function computeQualificationCounts(
     rappel: 0,
     pas_interesse: 0,
     pas_de_reponse: 0,
+    repondeur: 0,
     faux_numero: 0,
     nouveau_dossier: 0,
     non_eligible: 0,
