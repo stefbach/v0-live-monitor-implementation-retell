@@ -22,6 +22,7 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ApiStatus } from './api-status'
 import { DetailSlideOver } from './detail-slideover'
+import { ReportButton } from '../report-button'
 import { HandoffDetailSheet } from './handoff-detail-sheet'
 import { DurationHistogram } from '../duration-histogram'
 import { VerbatimPanel } from '../verbatim-panel'
@@ -185,7 +186,10 @@ export function DirectorView({
             {filteredCalls.length.toLocaleString()} appels
           </p>
         </div>
-        <ApiStatus />
+        <div className="flex items-center gap-2">
+          <ReportButton allCalls={allCalls} leads={leads} />
+          <ApiStatus />
+        </div>
       </div>
 
       {/* KPI banner */}

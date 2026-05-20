@@ -19,6 +19,7 @@ import { DirectorView } from '@/components/dashboard/director/director-view'
 import { CallLogsTable } from '@/components/dashboard/call-logs-table'
 import { CallLogsFilters } from '@/components/dashboard/call-logs-filters'
 import { StatsExtras } from '@/components/dashboard/stats/stats-extras'
+import { ReportButton } from '@/components/dashboard/report-button'
 import { CallDetailSheet } from '@/components/dashboard/call-detail-sheet'
 import { LiveView } from '@/components/dashboard/live/live-view'
 import { ErrorsView } from '@/components/dashboard/errors/errors-view'
@@ -101,6 +102,10 @@ export default function DashboardPage() {
             </TabsContent>
 
             <TabsContent value="stats" className="mt-6 space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">📊 Statistiques</h2>
+                <ReportButton allCalls={allCalls} leads={leads} />
+              </div>
               <BusinessKpis
                 metrics={callMetrics}
                 business={businessMetrics}
