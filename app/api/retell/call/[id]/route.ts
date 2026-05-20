@@ -229,11 +229,57 @@ export async function GET(
         duration,
         disconnectionReason
       ),
-      robotAwareness: detectRobotAwareness(
-        fullTranscriptText ||
-          ((data.call_analysis as { call_summary?: string })?.call_summary as string) ||
-          ''
-      ),
+      robotAwareness: (() => {
+        const flag = detectRobotAwareness(
+          fullTranscriptText ||
+            ((data.call_analysis as { call_summary?: string })?.call_summary as string) ||
+            ''
+        )
+        // Persist robot-awareness & voicemail-suspected flags in
+        // dashboard_errors so the counters survive across page reloads
+        // and aggregate across all analysed calls (#10). Fire-and-forget.
+        if (supabaseConfigured()) {
+          const supabase = getSupabaseServer()!
+          const callId = (data.call_id as string) || id
+          const leadId = (metaInfo?.leadId as string) || null
+          const vm = detectVoicemailSuspected(
+            inVoicemail,
+            duration,
+            disconnectionReason
+          )
+          if (flag) {
+            void supabase
+              .from('dashboard_errors')
+              .upsert(
+                {
+                  error_type: 'robot_awareness',
+                  call_id: callId,
+                  lead_id: leadId,
+                  detail: 'Détecté dans la transcription complète',
+                  status: 'open',
+                  created_at: new Date().toISOString(),
+                },
+                { onConflict: 'error_type,call_id' }
+              )
+          }
+          if (vm) {
+            void supabase
+              .from('dashboard_errors')
+              .upsert(
+                {
+                  error_type: 'voicemail_suspected',
+                  call_id: callId,
+                  lead_id: leadId,
+                  detail: `Durée ${duration}s, disconnect ${disconnectionReason ?? '—'}`,
+                  status: 'open',
+                  created_at: new Date().toISOString(),
+                },
+                { onConflict: 'error_type,call_id' }
+              )
+          }
+        }
+        return flag
+      })(),
       lead: fullLead
         ? {
             id: fullLead.id,

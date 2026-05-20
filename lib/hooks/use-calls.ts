@@ -1,6 +1,6 @@
 'use client'
 
-import useSWR from 'swr'
+import useSWR, { useSWRConfig } from 'swr'
 import { useMemo } from 'react'
 import type {
   CallLogEnriched,
@@ -144,9 +144,16 @@ export function useActiveCalls() {
 }
 
 export function useCallDetail(callId: string | null) {
+  const { mutate: globalMutate } = useSWRConfig()
   const { data, error, isLoading } = useSWR<
     (CallLogEnriched & { fullLead?: Lead | null }) | null
-  >(callId ? `/api/retell/call/${callId}` : null, fetcher)
+  >(callId ? `/api/retell/call/${callId}` : null, fetcher, {
+    onSuccess: () => {
+      // Server may have just inserted a robot_awareness / voicemail_suspected
+      // row into dashboard_errors — refresh the counters (#10).
+      globalMutate('/api/dashboard/errors')
+    },
+  })
 
   return {
     call: data ?? null,

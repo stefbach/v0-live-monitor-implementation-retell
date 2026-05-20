@@ -31,9 +31,9 @@ import {
   activityVsCost,
   creneauVolume,
   secondsDistribution,
-  robotStats,
   endOfDay,
 } from '@/lib/stats-extra'
+import { useDashboardErrors } from '@/lib/hooks/use-dashboard'
 import type { CallLogEnriched } from '@/lib/types'
 
 interface Props {
@@ -58,7 +58,24 @@ export function StatsExtras({ allCalls, filteredCalls, isLoading }: Props) {
     () => secondsDistribution(filteredCalls, bin),
     [filteredCalls, bin]
   )
-  const robot = useMemo(() => robotStats(filteredCalls), [filteredCalls])
+  const { errors: dashboardErrors } = useDashboardErrors()
+  const { persistedRobot, persistedVoicemail, analyzedInPeriod } = useMemo(() => {
+    const filteredIds = new Set(filteredCalls.map((c) => c.callId))
+    let robot = 0
+    let vm = 0
+    const analyzed = new Set<string>()
+    for (const e of dashboardErrors) {
+      if (!e.call_id || !filteredIds.has(e.call_id)) continue
+      if (e.error_type === 'robot_awareness') robot++
+      if (e.error_type === 'voicemail_suspected') vm++
+      analyzed.add(e.call_id)
+    }
+    return {
+      persistedRobot: robot,
+      persistedVoicemail: vm,
+      analyzedInPeriod: analyzed.size,
+    }
+  }, [dashboardErrors, filteredCalls])
   const eod = useMemo(
     () => endOfDay(allCalls, objective),
     [allCalls, objective]
@@ -209,35 +226,36 @@ export function StatsExtras({ allCalls, filteredCalls, isLoading }: Props) {
         </Card>
       </div>
 
-      {/* Robot awareness + répondeurs */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Robot awareness + répondeurs (persistant via dashboard_errors) */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <StatTile
           icon={Bot}
           color="bg-red-500/10 text-red-400"
-          label="Robot awareness"
-          value={`${robot.robotPct.toFixed(1)}%`}
-          sub={`${robot.robotCount} / ${robot.known} appels analysés`}
+          label="Robot awareness détectés"
+          value={persistedRobot.toLocaleString()}
+          sub={`sur la période filtrée · ${
+            filteredCalls.length > 0
+              ? ((persistedRobot / filteredCalls.length) * 100).toFixed(1)
+              : '0.0'
+          }%`}
         />
         <StatTile
           icon={Voicemail}
           color="bg-amber-500/10 text-amber-500"
           label="Répondeurs non détectés"
-          value={`${robot.voicemailSuspectedPct.toFixed(1)}%`}
-          sub={`${robot.voicemailSuspectedCount} appels suspects`}
-        />
-        <StatTile
-          icon={Bot}
-          color="bg-zinc-500/10 text-zinc-400"
-          label="Appels analysés (transcript)"
-          value={robot.known.toLocaleString()}
-          sub={`sur ${robot.total.toLocaleString()} au total`}
+          value={persistedVoicemail.toLocaleString()}
+          sub={`${
+            filteredCalls.length > 0
+              ? ((persistedVoicemail / filteredCalls.length) * 100).toFixed(1)
+              : '0.0'
+          }% des appels`}
         />
         <StatTile
           icon={TrendingUp}
           color="bg-blue-500/10 text-blue-500"
-          label="Couverture analyse"
-          value={`${robot.total > 0 ? ((robot.known / robot.total) * 100).toFixed(0) : 0}%`}
-          sub="robot awareness affiné au clic"
+          label="Analyse au clic"
+          value={`${analyzedInPeriod}`}
+          sub={`appels déjà ouverts en détail sur la période`}
         />
       </div>
 
