@@ -78,6 +78,7 @@ export function DirectorView({
     title: string
     calls: CallLogEnriched[]
     raw?: boolean
+    rappelDate?: boolean
   } | null>(null)
   const [handoffPanel, setHandoffPanel] = useState<
     ReturnType<typeof computeHandoffCandidates>[number] | null
@@ -89,16 +90,6 @@ export function DirectorView({
   )
   const qualCounts = useMemo(
     () => computeQualificationCounts(filteredCalls),
-    [filteredCalls]
-  )
-  const leadsClassified = useMemo(
-    () => Object.values(qualCounts).reduce((s, n) => s + n, 0),
-    [qualCounts]
-  )
-  // Calls without metadata.lead_id — surfaced via a link under the
-  // Qualifications card (#3)
-  const noMetaCalls = useMemo(
-    () => filteredCalls.filter((c) => !c.meta?.leadId),
     [filteredCalls]
   )
   const phase = useMemo(() => computePhaseTracking(filteredCalls), [filteredCalls])
@@ -128,7 +119,13 @@ export function DirectorView({
   const openKpi = (id: KpiId, title: string) =>
     setPanel({ title, calls: callsForKpi(filteredCalls, id, threshold) })
   const openQual = (key: QualKey, title: string) =>
-    setPanel({ title, calls: callsForQualification(filteredCalls, key) })
+    setPanel({
+      title,
+      calls: callsForQualification(filteredCalls, key),
+      // The RAPPEL card lists leads with a scheduled callback datetime
+      // (leads_rdv.rappel_rdv) — surface it in the slide-over rows.
+      rappelDate: key === 'rappel',
+    })
 
   if (isLoading) {
     return (
@@ -281,35 +278,9 @@ export function DirectorView({
               <p className="text-2xl font-bold tabular-nums">
                 {filteredCalls.length.toLocaleString()}
               </p>
-              <p className="text-[11px] text-muted-foreground">
-                appels Retell · {leadsClassified.toLocaleString()} leads classifiés
-              </p>
+              <p className="text-[11px] text-muted-foreground">appels Retell</p>
             </div>
           </div>
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            Les cards affichent les <strong>leads uniques</strong> par état CRM actuel
-            (<code className="font-mono text-[10px]">leads_rdv.qualification</code>).
-            Un lead appelé plusieurs fois ne compte qu&apos;une fois. Les appels sans{' '}
-            <code className="font-mono text-[10px]">lead_id</code> dans la metadata
-            ne sont pas rattachés à un lead CRM.
-            {noMetaCalls.length > 0 && (
-              <>
-                {' '}
-                <button
-                  onClick={() =>
-                    setPanel({
-                      title: `${noMetaCalls.length} appels sans metadata`,
-                      calls: noMetaCalls,
-                      raw: true,
-                    })
-                  }
-                  className="font-medium text-blue-400 underline-offset-2 hover:underline"
-                >
-                  Voir les {noMetaCalls.length} appels sans metadata
-                </button>
-              </>
-            )}
-          </p>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -458,6 +429,7 @@ export function DirectorView({
         title={panel?.title ?? ''}
         calls={panel?.calls ?? []}
         showRaw={panel?.raw}
+        showRappelDate={panel?.rappelDate}
         confirmedRdvLeadKeys={confirmedRdvLeadKeys}
         onSelectCall={(c) => {
           setPanel(null)

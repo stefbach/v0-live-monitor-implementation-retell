@@ -1,7 +1,7 @@
 'use client'
 
 import { format } from 'date-fns'
-import { CheckCircle2, XCircle } from 'lucide-react'
+import { CheckCircle2, XCircle, CalendarClock } from 'lucide-react'
 import { DirectionIcon } from '../direction-indicator'
 import {
   Sheet,
@@ -24,7 +24,15 @@ interface Props {
   calls: CallLogEnriched[]
   onSelectCall: (call: CallLogEnriched) => void
   showRaw?: boolean // show raw Retell status instead of mapped qualif badge
+  showRappelDate?: boolean // surface the lead's rappel_rdv datetime per row
   confirmedRdvLeadKeys?: Set<string>
+}
+
+function fmtRappel(iso: string | null | undefined): string | null {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  return format(d, 'dd/MM/yyyy HH:mm')
 }
 
 function rawStatus(c: CallLogEnriched): string {
@@ -49,6 +57,7 @@ export function DetailSlideOver({
   calls,
   onSelectCall,
   showRaw,
+  showRappelDate,
   confirmedRdvLeadKeys,
 }: Props) {
   const confirmed = confirmedRdvLeadKeys ?? new Set<string>()
@@ -88,6 +97,17 @@ export function DetailSlideOver({
                       {c.lead?.numero_telephone ??
                         (c.direction === 'inbound' ? c.fromNumber : c.toNumber)}
                     </p>
+                    {showRappelDate && fmtRappel(c.lead?.rappel_rdv) && (
+                      <p className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-orange-400">
+                        <CalendarClock className="h-3 w-3" />
+                        Rappel prévu : {fmtRappel(c.lead?.rappel_rdv)}
+                      </p>
+                    )}
+                    {showRappelDate && !fmtRappel(c.lead?.rappel_rdv) && (
+                      <p className="mt-0.5 text-[11px] italic text-muted-foreground">
+                        Pas de date de rappel renseignée
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">

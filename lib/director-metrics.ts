@@ -108,19 +108,16 @@ export interface QualCount {
 // Counts DISTINCT leads (by lead id) among the given calls, by qualification.
 // NON ELIGIBLE is computed from BMI (S2) and overrides only for leads that
 // are otherwise still "open" (not already RDV / not interested / faux numéro).
+// Count calls (not distinct leads) by their lead's CRM qualification, so
+// the sum of the cards equals the total number of calls in the period.
+// Calls without a lead or with an unmapped qualification fall back to
+// NOUVEAU DOSSIER so every call lands in a visible card.
+// Failed-strict RDV (CRM marks RDV MEDECIN but the criteria of #1 don't
+// match the lead's chain) are re-routed to RAPPEL since they need a
+// follow-up to actually confirm.
 export function computeQualificationCounts(
   calls: CallLogEnriched[]
 ): Record<QualKey, number> {
-  const seen = new Map<string, CallLogEnriched>()
-  for (const c of calls) {
-    const id = leadGroupKey(c)
-    if (!id) continue
-    // keep the most recent call per lead
-    const prev = seen.get(id)
-    if (!prev || new Date(c.startTime).getTime() > new Date(prev.startTime).getTime()) {
-      seen.set(id, c)
-    }
-  }
   const counts: Record<QualKey, number> = {
     rdv_confirme: 0,
     rdv_non_confirme: 0,
@@ -135,18 +132,22 @@ export function computeQualificationCounts(
     autre: 0,
   }
   const confirmedRdv = computeConfirmedRdvLeads(calls)
-  for (const [id, c] of seen.entries()) {
+  for (const c of calls) {
     let key = qualKeyFromRaw(c.lead?.qualification)
-    // Strict RDV CONFIRMÉ override (#1): if CRM says RDV MEDECIN but the
-    // lead's calls don't satisfy the criteria, route to 'autre' so the
-    // RDV CONFIRME card stays trustworthy.
-    if (key === 'rdv_confirme' && !confirmedRdv.has(id)) {
-      counts.autre++
-      continue
+    // Strict RDV CONFIRMÉ override (#1): keep the card honest by sending
+    // failed-strict leads to RAPPEL (they need a follow-up).
+    if (key === 'rdv_confirme') {
+      const lk = leadGroupKey(c)
+      if (!lk || !confirmedRdv.has(lk)) key = 'rappel'
     }
-    // NON ELIGIBLE overlay: only for still-open leads
+    // Unmapped raw → default NOUVEAU DOSSIER so every call is visible.
+    if (key === 'autre') key = 'nouveau_dossier'
+    // NON ELIGIBLE overlay: only for still-open leads.
     if (
-      (key === 'nouveau_dossier' || key === 'pas_de_reponse' || key === 'rappel') &&
+      (key === 'nouveau_dossier' ||
+        key === 'pas_de_reponse' ||
+        key === 'rappel' ||
+        key === 'repondeur') &&
       c.lead
     ) {
       const elig = computeEligibility({
@@ -168,6 +169,8 @@ export function computeQualificationCounts(
   return counts
 }
 
+// Mirror of computeQualificationCounts at the call level: returns the
+// calls that contribute to a given card.
 export function callsForQualification(
   calls: CallLogEnriched[],
   key: QualKey
@@ -187,28 +190,16 @@ export function callsForQualification(
       return e.reason === 'bmi_below'
     })
   }
-  if (key === 'rdv_confirme') {
-    // Strict (#1): only the leads passing the call-level criteria
-    const confirmed = computeConfirmedRdvLeads(calls)
-    return calls.filter((c) => {
-      const k = leadGroupKey(c)
-      return !!k && confirmed.has(k)
-    })
-  }
-  if (key === 'autre') {
-    // Raw 'autre' + CRM-RDV leads that failed the strict criteria
-    const confirmed = computeConfirmedRdvLeads(calls)
-    return calls.filter((c) => {
-      const raw = qualKeyFromRaw(c.lead?.qualification)
-      if (raw === 'autre') return true
-      if (raw === 'rdv_confirme') {
-        const k = leadGroupKey(c)
-        return !k || !confirmed.has(k)
-      }
-      return false
-    })
-  }
-  return calls.filter((c) => qualKeyFromRaw(c.lead?.qualification) === key)
+  const confirmed = computeConfirmedRdvLeads(calls)
+  return calls.filter((c) => {
+    let raw = qualKeyFromRaw(c.lead?.qualification)
+    if (raw === 'rdv_confirme') {
+      const lk = leadGroupKey(c)
+      if (!lk || !confirmed.has(lk)) raw = 'rappel'
+    }
+    if (raw === 'autre') raw = 'nouveau_dossier'
+    return raw === key
+  })
 }
 
 // ─── Phase J1 / J3 / J5 tracking ────────────────────────────────────────────
