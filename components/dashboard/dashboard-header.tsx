@@ -40,17 +40,15 @@ export function DashboardHeader({ onRefresh, isRefreshing }: DashboardHeaderProp
     <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-center gap-3">
         {theme === 'occ' ? (
-          <div className="flex h-16 min-w-[160px] items-center justify-center rounded-lg bg-white px-3 py-1 shadow-sm">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={logoSrc}
-              alt="Obesity Care Clinic"
-              className="h-full w-auto max-w-full object-contain"
-              onError={() => {
-                if (logoSrc !== OCC_LOGO_REMOTE) setLogoSrc(OCC_LOGO_REMOTE)
-              }}
-            />
-          </div>
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={logoSrc}
+            alt="Obesity Care Clinic"
+            className="h-12 w-auto object-contain"
+            onError={() => {
+              if (logoSrc !== OCC_LOGO_REMOTE) setLogoSrc(OCC_LOGO_REMOTE)
+            }}
+          />
         ) : (
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
             <Phone className="h-5 w-5 text-primary-foreground" />
