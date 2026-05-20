@@ -1,9 +1,8 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import {
   CalendarCheck,
-  CalendarPlus,
   PhoneOff,
   PhoneCall,
   TrendingUp,
@@ -18,6 +17,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { previousPeriodRange } from '@/lib/filters'
 import { makeDelta } from '@/lib/analytics'
 import { useFiltersStore } from '@/lib/stores/filters-store'
+import { leadGroupKey } from '@/lib/lead-key'
+import { bmiOrNull } from '@/lib/bmi'
+import { DetailSlideOver } from './director/detail-slideover'
 import type {
   BusinessMetrics,
   CallMetrics,
@@ -32,8 +34,20 @@ interface Props {
   filteredCalls: CallLogEnriched[]
   allCalls: CallLogEnriched[]
   leads: Lead[]
+  confirmedRdvLeadKeys?: Set<string>
+  onSelectCall?: (call: CallLogEnriched) => void
   isLoading?: boolean
 }
+
+type KpiId =
+  | 'rdv'
+  | 'answer'
+  | 'cost'
+  | 'total'
+  | 'eligible'
+  | 'avg_attempts'
+  | 'wrong'
+  | 'active'
 
 function formatUsd(cents: number): string {
   if (Math.abs(cents) >= 100_000) return `$${(cents / 100000).toFixed(2)}k`
@@ -46,17 +60,32 @@ export function BusinessKpis({
   filteredCalls,
   allCalls,
   leads,
+  confirmedRdvLeadKeys,
+  onSelectCall,
   isLoading,
 }: Props) {
   const filters = useFiltersStore((s) => s.filters)
+  const confirmed = confirmedRdvLeadKeys ?? new Set<string>()
+  const [panel, setPanel] = useState<{
+    title: string
+    calls: CallLogEnriched[]
+  } | null>(null)
 
   const computed = useMemo(() => {
     const total = filteredCalls.length
     const answered = filteredCalls.filter((c) => c.answered).length
-    const rdv = filteredCalls.filter((c) => c.lead?.qualification === 'RDV MEDECIN').length
+    // Strict RDV count (#1): leads in the confirmed set
+    const rdvLeads = new Set<string>()
+    for (const c of filteredCalls) {
+      const k = leadGroupKey(c)
+      if (k && confirmed.has(k)) rdvLeads.add(k)
+    }
+    const rdv = rdvLeads.size
     const cost = filteredCalls.reduce((s, c) => s + (c.cost ?? 0), 0)
     const wrongNum = filteredCalls.filter(
-      (c) => c.lead?.qualification === 'FAUX NUMERO' || c.lead?.qualification === 'PAS DE REPONSE'
+      (c) =>
+        c.lead?.qualification === 'FAUX NUMERO' ||
+        c.lead?.qualification === 'PAS DE REPONSE'
     ).length
 
     // Previous period comparison
@@ -66,7 +95,12 @@ export function BusinessKpis({
       return t >= prev.start && t < prev.end
     })
     const prevAnswered = prevCalls.filter((c) => c.answered).length
-    const prevRdv = prevCalls.filter((c) => c.lead?.qualification === 'RDV MEDECIN').length
+    const prevRdvLeads = new Set<string>()
+    for (const c of prevCalls) {
+      const k = leadGroupKey(c)
+      if (k && confirmed.has(k)) prevRdvLeads.add(k)
+    }
+    const prevRdv = prevRdvLeads.size
     const prevCost = prevCalls.reduce((s, c) => s + (c.cost ?? 0), 0)
 
     return {
@@ -83,7 +117,55 @@ export function BusinessKpis({
       rdvDelta: makeDelta(rdv, prevRdv),
       costDelta: makeDelta(cost, prevCost),
     }
-  }, [filteredCalls, allCalls, filters])
+  }, [filteredCalls, allCalls, filters, confirmed])
+
+  // Eligible leads in pipeline (forward-looking, full lead set)
+  const eligibleLeadIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const l of leads) {
+      const bmi = bmiOrNull(l.bmi)
+      if (bmi != null && bmi >= 40 && l.qualification !== 'RDV MEDECIN') {
+        ids.add(l.id)
+      }
+    }
+    return ids
+  }, [leads])
+
+  // Resolver: given a KPI id, return the calls to show in the slide-over
+  const callsForId = (id: KpiId): CallLogEnriched[] => {
+    switch (id) {
+      case 'rdv':
+        return filteredCalls.filter((c) => {
+          const k = leadGroupKey(c)
+          return !!k && confirmed.has(k)
+        })
+      case 'answer':
+        return filteredCalls.filter((c) => c.answered)
+      case 'cost':
+        return [...filteredCalls].sort((a, b) => (b.cost ?? 0) - (a.cost ?? 0))
+      case 'wrong':
+        return filteredCalls.filter(
+          (c) =>
+            c.lead?.qualification === 'FAUX NUMERO' ||
+            c.lead?.qualification === 'PAS DE REPONSE'
+        )
+      case 'eligible':
+        return filteredCalls.filter((c) => c.lead?.id && eligibleLeadIds.has(c.lead.id))
+      case 'avg_attempts':
+        return filteredCalls.filter((c) => {
+          const k = leadGroupKey(c)
+          return !!k && confirmed.has(k)
+        })
+      case 'active':
+      case 'total':
+      default:
+        return filteredCalls
+    }
+  }
+
+  const openKpi = (id: KpiId, label: string) => {
+    setPanel({ title: label, calls: callsForId(id) })
+  }
 
   if (isLoading) {
     return (
@@ -103,15 +185,9 @@ export function BusinessKpis({
     )
   }
 
-  // Eligible-in-pipeline rough count from leads (unfiltered, forward-looking)
-  // Quick estimate without scanning comorbidities here (eligibility pipeline section does the full pass)
-  const eligibleRough = leads.filter((l) => {
-    const bmi = l.bmi
-    return typeof bmi === 'number' && bmi >= 40 && l.qualification !== 'RDV MEDECIN'
-  }).length
-
   const tiles: TileSpec[] = [
     {
+      id: 'rdv',
       label: 'RDV booked',
       value: computed.rdv.toLocaleString(),
       delta: computed.rdvDelta,
@@ -121,6 +197,7 @@ export function BusinessKpis({
       highlight: true,
     },
     {
+      id: 'answer',
       label: 'Answer rate',
       value: `${computed.answerRate.toFixed(1)}%`,
       delta: computed.answeredDelta,
@@ -129,15 +206,17 @@ export function BusinessKpis({
       color: 'bg-blue-500/10 text-blue-500',
     },
     {
+      id: 'cost',
       label: 'Cost in period',
       value: formatUsd(computed.cost),
       delta: computed.costDelta,
       sub: `${formatUsd(computed.costPerRdv)} per RDV`,
       icon: DollarSign,
       color: 'bg-amber-500/10 text-amber-500',
-      invertDelta: true, // higher cost is worse
+      invertDelta: true,
     },
     {
+      id: 'total',
       label: 'Total calls',
       value: computed.total.toLocaleString(),
       delta: computed.callsDelta,
@@ -146,13 +225,15 @@ export function BusinessKpis({
       color: 'bg-cyan-500/10 text-cyan-500',
     },
     {
+      id: 'eligible',
       label: 'Eligible in pipeline',
-      value: eligibleRough.toLocaleString(),
+      value: eligibleLeadIds.size.toLocaleString(),
       sub: 'BMI ≥ 40 & not RDV',
       icon: TrendingUp,
       color: 'bg-violet-500/10 text-violet-500',
     },
     {
+      id: 'avg_attempts',
       label: 'Avg calls before RDV',
       value: business ? business.avgCallsBeforeRdv.toFixed(1) : '—',
       sub: 'Lower is better',
@@ -160,6 +241,7 @@ export function BusinessKpis({
       color: 'bg-violet-500/10 text-violet-500',
     },
     {
+      id: 'wrong',
       label: 'Wrong # / no answer',
       value: computed.wrongNum.toLocaleString(),
       sub: 'List quality',
@@ -167,25 +249,48 @@ export function BusinessKpis({
       color: 'bg-rose-500/10 text-rose-500',
     },
     {
+      id: 'active',
       label: 'Active now',
       value: metrics?.activeCalls.toString() ?? '0',
       sub: (metrics?.activeCalls ?? 0) > 0 ? 'Live calls' : 'Idle',
       icon: Activity,
       color: 'bg-emerald-500/10 text-emerald-500',
       pulse: (metrics?.activeCalls ?? 0) > 0,
+      noClick: true, // active calls don't live in filteredCalls
     },
   ]
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      {tiles.map((t) => (
-        <Tile key={t.label} {...t} />
-      ))}
-    </div>
+    <>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {tiles.map((t) => (
+          <Tile
+            key={t.id}
+            {...t}
+            onClick={
+              t.noClick ? undefined : () => openKpi(t.id, t.label)
+            }
+          />
+        ))}
+      </div>
+
+      <DetailSlideOver
+        open={!!panel}
+        onOpenChange={(o) => !o && setPanel(null)}
+        title={panel?.title ?? ''}
+        calls={panel?.calls ?? []}
+        confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+        onSelectCall={(c) => {
+          setPanel(null)
+          onSelectCall?.(c)
+        }}
+      />
+    </>
   )
 }
 
 interface TileSpec {
+  id: KpiId
   label: string
   value: string
   delta?: DeltaValue
@@ -195,16 +300,32 @@ interface TileSpec {
   highlight?: boolean
   pulse?: boolean
   invertDelta?: boolean
+  noClick?: boolean
 }
 
-function Tile({ label, value, delta, sub, icon: Icon, color, highlight, pulse, invertDelta }: TileSpec) {
+function Tile({
+  label,
+  value,
+  delta,
+  sub,
+  icon: Icon,
+  color,
+  highlight,
+  pulse,
+  invertDelta,
+  onClick,
+}: TileSpec & { onClick?: () => void }) {
   const showDelta = delta && (delta.current !== 0 || delta.previous !== 0)
   const positiveSign = invertDelta ? delta && delta.delta < 0 : delta && delta.delta > 0
   const deltaIcon = (delta?.delta ?? 0) >= 0 ? TrendingUp : TrendingDown
   const DeltaIconComp = deltaIcon
 
-  return (
-    <Card className={`py-4 ${highlight ? 'ring-1 ring-emerald-500/40' : ''}`}>
+  const card = (
+    <Card
+      className={`py-4 transition-shadow ${
+        highlight ? 'ring-1 ring-emerald-500/40' : ''
+      } ${onClick ? 'hover:shadow-md' : ''}`}
+    >
       <CardContent className="flex items-center gap-3">
         <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${color}`}>
           <Icon className="h-5 w-5" />
@@ -238,4 +359,12 @@ function Tile({ label, value, delta, sub, icon: Icon, color, highlight, pulse, i
       </CardContent>
     </Card>
   )
+
+  if (!onClick) return card
+  return (
+    <button onClick={onClick} className="text-left">
+      {card}
+    </button>
+  )
 }
+

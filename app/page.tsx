@@ -88,6 +88,7 @@ export default function DashboardPage() {
             <TabsContent value="directeur" className="mt-6">
               <DirectorView
                 filteredCalls={filteredCalls}
+                allCalls={allCalls}
                 leads={leads}
                 isLoading={isLoading}
                 confirmedRdvLeadKeys={confirmedRdvLeadKeys}
@@ -106,6 +107,8 @@ export default function DashboardPage() {
                 filteredCalls={filteredCalls}
                 allCalls={allCalls}
                 leads={leads}
+                confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+                onSelectCall={handleCallSelect}
                 isLoading={isLoading}
               />
 
@@ -185,6 +188,7 @@ export default function DashboardPage() {
             {activeTab === 'directeur' && (
               <DirectorView
                 filteredCalls={filteredCalls}
+                allCalls={allCalls}
                 leads={leads}
                 isLoading={isLoading}
                 confirmedRdvLeadKeys={confirmedRdvLeadKeys}
@@ -202,6 +206,8 @@ export default function DashboardPage() {
                   filteredCalls={filteredCalls}
                   allCalls={allCalls}
                   leads={leads}
+                  confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+                  onSelectCall={handleCallSelect}
                   isLoading={isLoading}
                 />
                 <CallHeatmap
