@@ -1,7 +1,7 @@
 import type { CallLogEnriched, Lead } from './types'
 import { qualKeyFromRaw, type QualKey } from './qualifications'
 import { computeEligibility } from './eligibility'
-import { computeConfirmedRdvLeads } from './rdv'
+import { computeConfirmedRdvLeads, effectiveQualKey } from './rdv'
 import { leadGroupKey, hasMetadata, agentLevel } from './lead-key'
 
 // Re-export for backwards compatibility with existing imports
@@ -108,14 +108,10 @@ export interface QualCount {
 // Counts DISTINCT leads (by lead id) among the given calls, by qualification.
 // NON ELIGIBLE is computed from BMI (S2) and overrides only for leads that
 // are otherwise still "open" (not already RDV / not interested / faux numéro).
-// Count calls (not distinct leads) by their lead's CRM qualification, so
-// the sum of the cards equals the total number of calls in the period.
-// NOUVEAU DOSSIER is the CRM default state before any call — calls still
-// tagged that way are re-routed to a concrete outcome based on call
-// signals so they don't disappear into a no-op card.
-// Failed-strict RDV (CRM marks RDV MEDECIN but the criteria of #1 don't
-// match the lead's chain) are routed to RAPPEL since they need a
-// follow-up to actually confirm.
+// Count calls (not distinct leads) by their final routed qualification.
+// All routing logic lives in effectiveQualKey() — see lib/rdv.ts — so
+// the card counters, slide-over filtering and per-row badges always
+// agree on which bucket a call belongs to.
 export function computeQualificationCounts(
   calls: CallLogEnriched[]
 ): Record<QualKey, number> {
@@ -132,80 +128,21 @@ export function computeQualificationCounts(
     ne_pas_rappeler: 0,
     autre: 0,
   }
-  const confirmedRdv = computeConfirmedRdvLeads(calls)
+  const confirmed = computeConfirmedRdvLeads(calls)
   for (const c of calls) {
-    let key = qualKeyFromRaw(c.lead?.qualification)
-    // Strict RDV CONFIRMÉ override (#1).
-    if (key === 'rdv_confirme') {
-      const lk = leadGroupKey(c)
-      if (!lk || !confirmedRdv.has(lk)) key = 'rappel'
-    }
-    // NOUVEAU DOSSIER / unmapped → infer from call signals so every call
-    // lands in a concrete visible bucket.
-    if (key === 'nouveau_dossier' || key === 'autre') {
-      if (c.answered) key = 'rappel'
-      else if (c.inVoicemail || c.voicemailSuspected) key = 'repondeur'
-      else key = 'pas_de_reponse'
-    }
-    // NON ELIGIBLE overlay: only for still-open leads.
-    if (
-      (key === 'pas_de_reponse' || key === 'rappel' || key === 'repondeur') &&
-      c.lead
-    ) {
-      const elig = computeEligibility({
-        bmi: c.lead.bmi,
-        nhs_wmp_status: null,
-        nhs_wmp_details: null,
-        other_chronic_conditions: null,
-        current_medications: null,
-        note: null,
-        allergies: null,
-      })
-      if (elig.reason === 'bmi_below') {
-        counts.non_eligible++
-        continue
-      }
-    }
-    counts[key]++
+    counts[effectiveQualKey(c, confirmed)]++
   }
   return counts
 }
 
-// Mirror of computeQualificationCounts at the call level: returns the
-// calls that contribute to a given card.
+// Mirror of computeQualificationCounts at the call level via the shared
+// effectiveQualKey() routing.
 export function callsForQualification(
   calls: CallLogEnriched[],
   key: QualKey
 ): CallLogEnriched[] {
-  if (key === 'non_eligible') {
-    return calls.filter((c) => {
-      if (!c.lead) return false
-      const e = computeEligibility({
-        bmi: c.lead.bmi,
-        nhs_wmp_status: null,
-        nhs_wmp_details: null,
-        other_chronic_conditions: null,
-        current_medications: null,
-        note: null,
-        allergies: null,
-      })
-      return e.reason === 'bmi_below'
-    })
-  }
   const confirmed = computeConfirmedRdvLeads(calls)
-  return calls.filter((c) => {
-    let raw = qualKeyFromRaw(c.lead?.qualification)
-    if (raw === 'rdv_confirme') {
-      const lk = leadGroupKey(c)
-      if (!lk || !confirmed.has(lk)) raw = 'rappel'
-    }
-    if (raw === 'nouveau_dossier' || raw === 'autre') {
-      if (c.answered) raw = 'rappel'
-      else if (c.inVoicemail || c.voicemailSuspected) raw = 'repondeur'
-      else raw = 'pas_de_reponse'
-    }
-    return raw === key
-  })
+  return calls.filter((c) => effectiveQualKey(c, confirmed) === key)
 }
 
 // ─── Phase J1 / J3 / J5 tracking ────────────────────────────────────────────

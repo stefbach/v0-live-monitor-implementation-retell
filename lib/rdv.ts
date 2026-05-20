@@ -1,6 +1,7 @@
 import type { CallLogEnriched } from './types'
 import { leadGroupKey, agentLevel } from './lead-key'
 import { qualKeyFromRaw, type QualKey } from './qualifications'
+import { computeEligibility } from './eligibility'
 
 // Strict definition of "RDV confirmé", agreed with the user (#1).
 //
@@ -76,16 +77,60 @@ export function computeConfirmedRdvLeads(
   return out
 }
 
-// Per-call effective qualification: if CRM says RDV MEDECIN but the lead
-// does not satisfy the strict criteria, surface "rdv_non_confirme" so the
-// UI doesn't show "RDV CONFIRME" badges on 3-second calls.
+// Single source of truth for the FINAL bucket of any call. Used by:
+//   - card counters (computeQualificationCounts)
+//   - slide-over filtering (callsForQualification)
+//   - per-row badges (CallLogsTable, DetailSlideOver, CallDetailSheet…)
+// so the UI is internally consistent.
+//
+// Routing rules (in order):
+//   1) RDV CONFIRMÉ → strict criteria of computeConfirmedRdvLeads; else
+//      re-routed to RAPPEL (needs follow-up to actually confirm).
+//   2) NOUVEAU DOSSIER (CRM default) or unmapped → infer from call signal:
+//        - c.answered (real conversation > 15s, valid disconnect) → RAPPEL
+//        - voicemail (c.inVoicemail OR voicemailSuspected)        → REPONDEUR
+//        - otherwise (true no-answer)                             → PAS DE REPONSE
+//   3) NON ELIGIBLE overlay: ONLY when the call was actually answered
+//      AND the lead's BMI is below the S2 threshold. Applies on top of
+//      the "still-open" buckets only (rappel / repondeur / pas_de_reponse),
+//      never overrides explicit refusals (pas_interesse / faux_numero /
+//      ne_pas_rappeler) nor confirmed RDV.
 export function effectiveQualKey(
   c: CallLogEnriched,
   confirmedRdvLeadKeys: Set<string>
 ): QualKey {
-  const raw = qualKeyFromRaw(c.lead?.qualification)
-  if (raw !== 'rdv_confirme') return raw
-  const k = leadGroupKey(c)
-  if (!k || !confirmedRdvLeadKeys.has(k)) return 'rdv_non_confirme'
-  return 'rdv_confirme'
+  let key = qualKeyFromRaw(c.lead?.qualification)
+
+  // 1) Strict RDV CONFIRMÉ
+  if (key === 'rdv_confirme') {
+    const lk = leadGroupKey(c)
+    if (!lk || !confirmedRdvLeadKeys.has(lk)) key = 'rappel'
+  }
+
+  // 2) NOUVEAU DOSSIER / unmapped → re-route by call signal
+  if (key === 'nouveau_dossier' || key === 'autre') {
+    if (c.answered) key = 'rappel'
+    else if (c.inVoicemail || c.voicemailSuspected) key = 'repondeur'
+    else key = 'pas_de_reponse'
+  }
+
+  // 3) NON ELIGIBLE overlay — only if we actually spoke to the person
+  if (
+    c.answered &&
+    c.lead &&
+    (key === 'rappel' || key === 'repondeur' || key === 'pas_de_reponse')
+  ) {
+    const elig = computeEligibility({
+      bmi: c.lead.bmi,
+      nhs_wmp_status: null,
+      nhs_wmp_details: null,
+      other_chronic_conditions: null,
+      current_medications: null,
+      note: null,
+      allergies: null,
+    })
+    if (elig.reason === 'bmi_below') return 'non_eligible'
+  }
+
+  return key
 }
