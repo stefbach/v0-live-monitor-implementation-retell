@@ -1,6 +1,7 @@
 'use client'
 
 import { RefreshCw, Phone } from 'lucide-react'
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -21,24 +22,35 @@ interface DashboardHeaderProps {
   isRefreshing?: boolean
 }
 
-const OCC_LOGO_URL =
+// Try a locally-uploaded cropped version first (drop your file at
+// public/occ-logo.png — ideally a wider crop without the whitespace
+// padding), fall back to the remote master if the local file isn't
+// available.
+const OCC_LOGO_LOCAL = '/occ-logo.png'
+const OCC_LOGO_REMOTE =
   'https://obesity-care-clinic.com/wp-content/uploads/2023/01/OCC_BLUE_White_Background.png'
 
 export function DashboardHeader({ onRefresh, isRefreshing }: DashboardHeaderProps) {
   const { timeRange, setTimeRange } = useTimeRangeStore()
   const { t } = useT()
   const theme = useThemeStore((s) => s.theme)
+  const [logoSrc, setLogoSrc] = useState(OCC_LOGO_LOCAL)
 
   return (
     <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-center gap-3">
         {theme === 'occ' ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={OCC_LOGO_URL}
-            alt="OCC"
-            className="h-10 w-auto rounded bg-white p-1"
-          />
+          <div className="flex h-16 min-w-[160px] items-center justify-center rounded-lg bg-white px-3 py-1 shadow-sm">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={logoSrc}
+              alt="Obesity Care Clinic"
+              className="h-full w-auto max-w-full object-contain"
+              onError={() => {
+                if (logoSrc !== OCC_LOGO_REMOTE) setLogoSrc(OCC_LOGO_REMOTE)
+              }}
+            />
+          </div>
         ) : (
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
             <Phone className="h-5 w-5 text-primary-foreground" />
