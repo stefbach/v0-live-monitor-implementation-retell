@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { computeEligibility } from '@/lib/eligibility'
+import { formatBmi } from '@/lib/bmi'
 import type { Lead } from '@/lib/types'
 
 interface Props {
@@ -106,8 +107,15 @@ export function EligibilityPipeline({ leads, isLoading }: Props) {
                           {lead.numero_telephone ?? ''}
                         </div>
                       </td>
-                      <td className="py-2 text-right font-mono text-emerald-500 font-semibold">
-                        {bmi != null ? bmi.toFixed(1) : '—'}
+                      <td
+                        className="py-2 text-right font-mono text-emerald-500 font-semibold"
+                        title={
+                          formatBmi(bmi).valid
+                            ? ''
+                            : `Valeur DB brute : ${bmi ?? 'null'}`
+                        }
+                      >
+                        {formatBmi(bmi, '—').text}
                       </td>
                       <td className="py-2 text-xs">
                         {comorbidities.length > 0 ? (
@@ -157,7 +165,7 @@ export function EligibilityPipeline({ leads, isLoading }: Props) {
             <div className="flex flex-wrap gap-2 text-xs">
               {lost.slice(0, 8).map(({ lead, bmi }) => (
                 <Badge key={lead.id} variant="outline" className="font-normal">
-                  {lead.nom ?? 'Unknown'} · BMI {bmi?.toFixed(1) ?? '—'} ·{' '}
+                  {lead.nom ?? 'Unknown'} · BMI {formatBmi(bmi, '—').text} ·{' '}
                   <span className="text-amber-500">{lead.qualification}</span>
                 </Badge>
               ))}

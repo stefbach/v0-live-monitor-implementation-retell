@@ -36,6 +36,9 @@ import { AudioPlayer } from './audio-player'
 import { TranscriptViewer } from './transcript-viewer'
 import { useCallDetail } from '@/lib/hooks/use-calls'
 import { agentLevel } from '@/lib/director-metrics'
+import { effectiveQualKey } from '@/lib/rdv'
+import { QUAL_META } from '@/lib/qualifications'
+import { formatBmi } from '@/lib/bmi'
 import type { CallLogEnriched, Lead, Qualification } from '@/lib/types'
 
 interface CallDetailSheetProps {
@@ -43,6 +46,7 @@ interface CallDetailSheetProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   allCalls?: CallLogEnriched[]
+  confirmedRdvLeadKeys?: Set<string>
   onSelectCall?: (call: CallLogEnriched) => void
 }
 
@@ -101,8 +105,10 @@ export function CallDetailSheet({
   open,
   onOpenChange,
   allCalls = [],
+  confirmedRdvLeadKeys,
   onSelectCall,
 }: CallDetailSheetProps) {
+  const confirmed = confirmedRdvLeadKeys ?? new Set<string>()
   const { call, isLoading } = useCallDetail(callId)
   const fullLead = (call as (CallLogEnriched & { fullLead?: Lead | null }) | null)?.fullLead
   const [audioTime, setAudioTime] = useState(0)
@@ -150,7 +156,14 @@ export function CallDetailSheet({
             {/* Status badges */}
             <div className="flex flex-wrap items-center gap-2">
               {getStatusBadge(call.status)}
-              {getQualifBadge(call.lead?.qualification)}
+              {(() => {
+                const m = QUAL_META[effectiveQualKey(call, confirmed)]
+                return (
+                  <Badge variant="outline" className={m.badgeClass}>
+                    {m.label}
+                  </Badge>
+                )
+              })()}
               {call.direction === 'inbound' ? (
                 <Badge variant="outline" className="gap-1">
                   <PhoneIncoming className="h-3 w-3" /> Inbound
@@ -284,7 +297,7 @@ export function CallDetailSheet({
                 </p>
                 <div className="grid grid-cols-2 gap-2">
                   <DataCard icon={<Mail className="h-3.5 w-3.5" />} label="Email" value={fullLead?.email ?? '—'} />
-                  <DataCard icon={<Scale className="h-3.5 w-3.5" />} label="BMI" value={fullLead?.bmi != null ? fullLead.bmi.toFixed(1) : '—'} />
+                  <DataCard icon={<Scale className="h-3.5 w-3.5" />} label="BMI" value={formatBmi(fullLead?.bmi, 'Non renseigné').text} />
                   <DataCard icon={<Pill className="h-3.5 w-3.5" />} label="Médicaments" value={fullLead?.current_medications ?? '—'} />
                   <DataCard icon={<Stethoscope className="h-3.5 w-3.5" />} label="Chirurgies passées" value={fullLead?.past_surgeries ?? '—'} />
                   <DataCard icon={<HeartPulse className="h-3.5 w-3.5" />} label="Allergies" value={fullLead?.allergies ?? '—'} />

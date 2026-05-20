@@ -14,6 +14,7 @@ import type {
 import { applyFilters } from '@/lib/filters'
 import { useFiltersStore } from '@/lib/stores/filters-store'
 import { computeBusinessMetrics } from '@/lib/leads'
+import { computeConfirmedRdvLeads } from '@/lib/rdv'
 
 const fetcher = async <T>(url: string): Promise<T> => {
   const res = await fetch(url)
@@ -35,6 +36,7 @@ export interface DashboardData {
   agentNames: Record<string, string>
   callMetrics: CallMetrics
   businessMetrics: BusinessMetrics | null
+  confirmedRdvLeadKeys: Set<string>
   filters: DashboardFilters
   isLoading: boolean
   isError: unknown
@@ -96,6 +98,13 @@ export function useDashboardData(): DashboardData {
     return computeBusinessMetrics(leads, agentNames, callsByAgent)
   }, [leads, agentNames, filteredCalls])
 
+  // Strict RDV-confirmed lead set computed from ALL calls (badges should
+  // reflect the lead's full history, not just the current period filter).
+  const confirmedRdvLeadKeys = useMemo(
+    () => computeConfirmedRdvLeads(allCalls),
+    [allCalls]
+  )
+
   return {
     allCalls,
     filteredCalls,
@@ -103,6 +112,7 @@ export function useDashboardData(): DashboardData {
     agentNames,
     callMetrics,
     businessMetrics,
+    confirmedRdvLeadKeys,
     filters,
     isLoading,
     isError: error,

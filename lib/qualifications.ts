@@ -15,6 +15,7 @@
 
 export type QualKey =
   | 'rdv_confirme'
+  | 'rdv_non_confirme'
   | 'rappel'
   | 'pas_interesse'
   | 'pas_de_reponse'
@@ -53,6 +54,13 @@ export const QUAL_META: Record<QualKey, QualMeta> = {
     badgeClass: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30',
     dotClass: 'bg-emerald-500',
     cardAccent: 'border-l-emerald-500',
+  },
+  rdv_non_confirme: {
+    key: 'rdv_non_confirme',
+    label: 'RDV (non confirmé)',
+    badgeClass: 'bg-amber-500/10 text-amber-500 border-amber-500/40',
+    dotClass: 'bg-amber-500',
+    cardAccent: 'border-l-amber-500',
   },
   rappel: {
     key: 'rappel',

@@ -19,14 +19,16 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { TableSkeleton } from './skeleton-loaders'
-import { mapQualification } from '@/lib/qualifications'
+import { QUAL_META } from '@/lib/qualifications'
 import { CRENEAUX } from '@/lib/timezone'
 import { agentLevel } from '@/lib/director-metrics'
+import { effectiveQualKey } from '@/lib/rdv'
 import type { CallLogEnriched } from '@/lib/types'
 
 interface Props {
   calls: CallLogEnriched[]
   isLoading?: boolean
+  confirmedRdvLeadKeys?: Set<string>
   onCallSelect?: (call: CallLogEnriched) => void
 }
 
@@ -44,7 +46,13 @@ function fmtUsd(cents: number | null | undefined): string {
   return `$${(cents / 100).toFixed(2)}`
 }
 
-export function CallLogsTable({ calls, isLoading, onCallSelect }: Props) {
+export function CallLogsTable({
+  calls,
+  isLoading,
+  confirmedRdvLeadKeys,
+  onCallSelect,
+}: Props) {
+  const confirmed = confirmedRdvLeadKeys ?? new Set<string>()
   const [sortField, setSortField] = useState<SortField>('startTime')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [page, setPage] = useState(0)
@@ -155,7 +163,7 @@ export function CallLogsTable({ calls, isLoading, onCallSelect }: Props) {
             <tbody>
               {paginated.map((call) => {
                 const lead = call.lead
-                const q = mapQualification(lead?.qualification)
+                const q = QUAL_META[effectiveQualKey(call, confirmed)]
                 const lvl = agentLevel(call.agentName)
                 const leadKey = call.meta?.leadId ?? lead?.id
                 const isMulti = leadKey ? multiAgentLeads.has(leadKey) : false
@@ -258,7 +266,7 @@ export function CallLogsTable({ calls, isLoading, onCallSelect }: Props) {
         <div className="flex flex-col gap-3 lg:hidden">
           {paginated.map((call) => {
             const lead = call.lead
-            const q = mapQualification(lead?.qualification)
+            const q = QUAL_META[effectiveQualKey(call, confirmed)]
             return (
               <button
                 key={call.id}

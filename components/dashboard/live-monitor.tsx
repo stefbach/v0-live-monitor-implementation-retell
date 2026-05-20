@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { useActiveCalls } from '@/lib/hooks/use-calls'
 import { useT } from '@/lib/hooks/use-t'
+import { formatBmi } from '@/lib/bmi'
 import { LiveCallSkeleton } from './skeleton-loaders'
 import type { ActiveCallEnriched, Qualification } from '@/lib/types'
 
@@ -108,7 +109,12 @@ function LiveCallCard({ call }: { call: ActiveCallEnriched }) {
             <div className="grid grid-cols-3 gap-2 text-xs">
               <div>
                 <p className="text-muted-foreground">BMI</p>
-                <p className="font-mono font-medium">{lead.bmi != null ? lead.bmi.toFixed(1) : '—'}</p>
+                <p
+                  className="font-mono font-medium"
+                  title={formatBmi(lead.bmi).valid ? '' : `Raw: ${lead.bmi ?? 'null'}`}
+                >
+                  {formatBmi(lead.bmi, '—').text}
+                </p>
               </div>
               <div>
                 <p className="text-muted-foreground">{t('live.source')}</p>

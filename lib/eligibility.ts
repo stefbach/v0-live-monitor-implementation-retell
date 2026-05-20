@@ -1,4 +1,5 @@
 import type { Lead, LeadSummary, EligibilityResult } from './types'
+import { bmiOrNull } from './bmi'
 
 // S2 UK NHS Weight Management Programme eligibility (Tier 3/4):
 //   BMI ≥ 40, OR
@@ -86,7 +87,7 @@ export function computeEligibility(lead: EligibilitySource | null): EligibilityR
   if (!lead) {
     return { eligible: false, reason: 'unknown', comorbidities: [], bmi: null }
   }
-  const bmi = typeof lead.bmi === 'number' ? lead.bmi : null
+  const bmi = bmiOrNull(lead.bmi)
   const comorbidities = detectComorbidities(
     lead.nhs_wmp_status,
     lead.nhs_wmp_details,
@@ -113,7 +114,7 @@ export function computeEligibilityFromSummary(
   lead: LeadSummary | null
 ): EligibilityResult {
   if (!lead) return { eligible: false, reason: 'unknown', comorbidities: [], bmi: null }
-  const bmi = typeof lead.bmi === 'number' ? lead.bmi : null
+  const bmi = bmiOrNull(lead.bmi)
   if (bmi == null)
     return { eligible: false, reason: 'unknown', comorbidities: [], bmi: null }
   if (bmi >= 40) return { eligible: true, reason: 'bmi_40', comorbidities: [], bmi }

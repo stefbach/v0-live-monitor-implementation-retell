@@ -10,8 +10,9 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet'
 import { Badge } from '@/components/ui/badge'
-import { mapQualification } from '@/lib/qualifications'
+import { QUAL_META } from '@/lib/qualifications'
 import { CRENEAUX } from '@/lib/timezone'
+import { effectiveQualKey } from '@/lib/rdv'
 import type { CallLogEnriched } from '@/lib/types'
 
 interface Props {
@@ -22,6 +23,7 @@ interface Props {
   calls: CallLogEnriched[]
   onSelectCall: (call: CallLogEnriched) => void
   showRaw?: boolean // show raw Retell status instead of mapped qualif badge
+  confirmedRdvLeadKeys?: Set<string>
 }
 
 function rawStatus(c: CallLogEnriched): string {
@@ -46,7 +48,9 @@ export function DetailSlideOver({
   calls,
   onSelectCall,
   showRaw,
+  confirmedRdvLeadKeys,
 }: Props) {
+  const confirmed = confirmedRdvLeadKeys ?? new Set<string>()
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
@@ -64,7 +68,7 @@ export function DetailSlideOver({
             </p>
           )}
           {calls.slice(0, 200).map((c) => {
-            const q = mapQualification(c.lead?.qualification)
+            const q = QUAL_META[effectiveQualKey(c, confirmed)]
             return (
               <button
                 key={c.id}

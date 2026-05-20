@@ -43,6 +43,7 @@ export default function DashboardPage() {
     agentNames,
     callMetrics,
     businessMetrics,
+    confirmedRdvLeadKeys,
     isLoading,
     refresh,
   } = useDashboardData()
@@ -91,6 +92,7 @@ export default function DashboardPage() {
                 filteredCalls={filteredCalls}
                 leads={leads}
                 isLoading={isLoading}
+                confirmedRdvLeadKeys={confirmedRdvLeadKeys}
                 onSelectCall={handleCallSelect}
               />
             </TabsContent>
@@ -169,6 +171,7 @@ export default function DashboardPage() {
               <CallLogsTable
                 calls={filteredCalls}
                 isLoading={isLoading}
+                confirmedRdvLeadKeys={confirmedRdvLeadKeys}
                 onCallSelect={handleCallSelect}
               />
             </TabsContent>
@@ -185,6 +188,7 @@ export default function DashboardPage() {
                 filteredCalls={filteredCalls}
                 leads={leads}
                 isLoading={isLoading}
+                confirmedRdvLeadKeys={confirmedRdvLeadKeys}
                 onSelectCall={handleCallSelect}
               />
             )}
@@ -248,6 +252,7 @@ export default function DashboardPage() {
                 <CallLogsTable
                   calls={filteredCalls}
                   isLoading={isLoading}
+                  confirmedRdvLeadKeys={confirmedRdvLeadKeys}
                   onCallSelect={handleCallSelect}
                 />
               </div>
@@ -265,6 +270,7 @@ export default function DashboardPage() {
         open={isSheetOpen}
         onOpenChange={setIsSheetOpen}
         allCalls={allCalls}
+        confirmedRdvLeadKeys={confirmedRdvLeadKeys}
         onSelectCall={handleCallSelect}
       />
     </div>

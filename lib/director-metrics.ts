@@ -1,25 +1,11 @@
 import type { CallLogEnriched, Lead } from './types'
 import { qualKeyFromRaw, type QualKey } from './qualifications'
 import { computeEligibility } from './eligibility'
-import { normalizePhone, pickCounterpartyNumber } from './phone'
+import { computeConfirmedRdvLeads } from './rdv'
+import { leadGroupKey, hasMetadata, agentLevel } from './lead-key'
 
-// Stable grouping key for "the same lead across multiple calls".
-// metadata.lead_id is the source of truth, but older calls (placed before
-// the n8n metadata rollout) may not have it — fall back to the matched
-// CRM lead id, then to the normalised counterparty phone number so those
-// calls are still grouped and counted instead of being dropped.
-export function leadGroupKey(c: CallLogEnriched): string | null {
-  if (c.meta?.leadId) return c.meta.leadId
-  if (c.lead?.id) return c.lead.id
-  const phone = normalizePhone(
-    pickCounterpartyNumber(c.direction, c.fromNumber, c.toNumber)
-  )
-  return phone || null
-}
-
-export function hasMetadata(c: CallLogEnriched): boolean {
-  return !!c.meta?.leadId
-}
+// Re-export for backwards compatibility with existing imports
+export { leadGroupKey, hasMetadata, agentLevel }
 
 // ─── KPI banner ─────────────────────────────────────────────────────────────
 
@@ -45,7 +31,6 @@ export function computeDirectorKpis(
   let duration = 0
   let callbacks = 0
   let over = 0
-  const rdvLeadIds = new Set<string>()
 
   for (const c of calls) {
     if (c.answered) answered++
@@ -53,10 +38,11 @@ export function computeDirectorKpis(
     duration += c.duration
     if (c.analysis?.callbackScheduled) callbacks++
     if (c.duration > durationThresholdSec) over++
-    if (qualKeyFromRaw(c.lead?.qualification) === 'rdv_confirme') {
-      rdvLeadIds.add(leadGroupKey(c) ?? c.callId)
-    }
   }
+
+  // Strict RDV CONFIRMÉ: re-derived from call-level evidence (#1).
+  // Don't trust leads_rdv.qualification === 'RDV MEDECIN' for 3-second calls.
+  const rdvLeadIds = computeConfirmedRdvLeads(calls)
 
   const rdv = rdvLeadIds.size
   return {
@@ -92,8 +78,13 @@ export function callsForKpi(
     case 'answered':
       return calls.filter((c) => c.answered)
     case 'rdv':
-    case 'conversion':
-      return calls.filter((c) => qualKeyFromRaw(c.lead?.qualification) === 'rdv_confirme')
+    case 'conversion': {
+      const confirmed = computeConfirmedRdvLeads(calls)
+      return calls.filter((c) => {
+        const k = leadGroupKey(c)
+        return !!k && confirmed.has(k)
+      })
+    }
     case 'callbacks':
       return calls.filter((c) => c.analysis?.callbackScheduled)
     case 'over':
@@ -132,6 +123,7 @@ export function computeQualificationCounts(
   }
   const counts: Record<QualKey, number> = {
     rdv_confirme: 0,
+    rdv_non_confirme: 0,
     rappel: 0,
     pas_interesse: 0,
     pas_de_reponse: 0,
@@ -141,8 +133,16 @@ export function computeQualificationCounts(
     ne_pas_rappeler: 0,
     autre: 0,
   }
-  for (const c of seen.values()) {
-    const key = qualKeyFromRaw(c.lead?.qualification)
+  const confirmedRdv = computeConfirmedRdvLeads(calls)
+  for (const [id, c] of seen.entries()) {
+    let key = qualKeyFromRaw(c.lead?.qualification)
+    // Strict RDV CONFIRMÉ override (#1): if CRM says RDV MEDECIN but the
+    // lead's calls don't satisfy the criteria, route to 'autre' so the
+    // RDV CONFIRME card stays trustworthy.
+    if (key === 'rdv_confirme' && !confirmedRdv.has(id)) {
+      counts.autre++
+      continue
+    }
     // NON ELIGIBLE overlay: only for still-open leads
     if (
       (key === 'nouveau_dossier' || key === 'pas_de_reponse' || key === 'rappel') &&
@@ -184,6 +184,27 @@ export function callsForQualification(
         allergies: null,
       })
       return e.reason === 'bmi_below'
+    })
+  }
+  if (key === 'rdv_confirme') {
+    // Strict (#1): only the leads passing the call-level criteria
+    const confirmed = computeConfirmedRdvLeads(calls)
+    return calls.filter((c) => {
+      const k = leadGroupKey(c)
+      return !!k && confirmed.has(k)
+    })
+  }
+  if (key === 'autre') {
+    // Raw 'autre' + CRM-RDV leads that failed the strict criteria
+    const confirmed = computeConfirmedRdvLeads(calls)
+    return calls.filter((c) => {
+      const raw = qualKeyFromRaw(c.lead?.qualification)
+      if (raw === 'autre') return true
+      if (raw === 'rdv_confirme') {
+        const k = leadGroupKey(c)
+        return !k || !confirmed.has(k)
+      }
+      return false
     })
   }
   return calls.filter((c) => qualKeyFromRaw(c.lead?.qualification) === key)
@@ -229,15 +250,8 @@ export function computePhaseTracking(calls: CallLogEnriched[]): PhaseTracking {
 
 // ─── Agent chain buckets (Agent 1 only / 1+2 / 1+2+3) ───────────────────────
 
-// Charlotte = level 1, Isabelle = level 2, Victoria = level 3.
-export function agentLevel(agentName: string | null | undefined): 1 | 2 | 3 | null {
-  if (!agentName) return null
-  const n = agentName.toLowerCase()
-  if (/\bagent\s*1\b/.test(n) || n.includes('charlotte')) return 1
-  if (/\bagent\s*2\b/.test(n) || n.includes('isabelle')) return 2
-  if (/\bagent\s*3\b/.test(n) || n.includes('victoria')) return 3
-  return null
-}
+// agentLevel + leadGroupKey moved to lib/lead-key.ts to avoid a circular
+// import with lib/rdv.ts. Re-exported above for backward compatibility.
 
 export interface AgentBuckets {
   agent1Only: number

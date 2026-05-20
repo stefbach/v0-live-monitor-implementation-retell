@@ -42,6 +42,7 @@ interface Props {
   filteredCalls: CallLogEnriched[]
   leads: Lead[]
   isLoading: boolean
+  confirmedRdvLeadKeys: Set<string>
   onSelectCall: (call: CallLogEnriched) => void
 }
 
@@ -52,7 +53,13 @@ function fmtDur(s: number) {
   return `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`
 }
 
-export function DirectorView({ filteredCalls, leads, isLoading, onSelectCall }: Props) {
+export function DirectorView({
+  filteredCalls,
+  leads,
+  isLoading,
+  confirmedRdvLeadKeys,
+  onSelectCall,
+}: Props) {
   const { t } = useT()
   const period = useFiltersStore((s) => s.filters.period)
   const periodLabel = PERIODS.find((p) => p.id === period)?.label ?? period
@@ -349,6 +356,7 @@ export function DirectorView({ filteredCalls, leads, isLoading, onSelectCall }: 
         title={panel?.title ?? ''}
         calls={panel?.calls ?? []}
         showRaw={panel?.raw}
+        confirmedRdvLeadKeys={confirmedRdvLeadKeys}
         onSelectCall={(c) => {
           setPanel(null)
           onSelectCall(c)
