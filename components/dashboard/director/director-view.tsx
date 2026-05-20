@@ -22,10 +22,12 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ApiStatus } from './api-status'
 import { DetailSlideOver } from './detail-slideover'
+import { HandoffDetailSheet } from './handoff-detail-sheet'
 import { DurationHistogram } from '../duration-histogram'
 import { VerbatimPanel } from '../verbatim-panel'
 import { useT } from '@/lib/hooks/use-t'
 import { computeHeatmap } from '@/lib/analytics'
+import { formatBmi } from '@/lib/bmi'
 import {
   computeDirectorKpis,
   callsForKpi,
@@ -76,6 +78,9 @@ export function DirectorView({
     calls: CallLogEnriched[]
     raw?: boolean
   } | null>(null)
+  const [handoffPanel, setHandoffPanel] = useState<
+    ReturnType<typeof computeHandoffCandidates>[number] | null
+  >(null)
 
   const kpis = useMemo(
     () => computeDirectorKpis(filteredCalls, threshold),
@@ -451,7 +456,18 @@ export function DirectorView({
       </Card>
 
       {/* Dossiers à confier */}
-      <HandoffSection candidates={handoff} />
+      <HandoffSection
+        candidates={handoff}
+        onOpenDetail={(c) => setHandoffPanel(c)}
+      />
+
+      <HandoffDetailSheet
+        candidate={handoffPanel}
+        allCalls={allCalls}
+        confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+        open={!!handoffPanel}
+        onOpenChange={(o) => !o && setHandoffPanel(null)}
+      />
 
       {/* Click-through slide-over */}
       <DetailSlideOver
@@ -474,8 +490,10 @@ export function DirectorView({
 
 function HandoffSection({
   candidates,
+  onOpenDetail,
 }: {
   candidates: ReturnType<typeof computeHandoffCandidates>
+  onOpenDetail: (c: ReturnType<typeof computeHandoffCandidates>[number]) => void
 }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [done, setDone] = useState<Record<string, string>>({})
@@ -512,63 +530,70 @@ function HandoffSection({
           </p>
         ) : (
           <div className="space-y-2">
-            {candidates.slice(0, 25).map((c) => (
-              <div
-                key={c.leadId}
-                className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">
-                    {c.name ?? 'Inconnu'}{' '}
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {c.phone ?? ''}
-                    </span>
-                  </p>
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {c.reasons.map((r) => (
-                      <Badge key={r} variant="secondary" className="text-[10px]">
-                        {r}
-                      </Badge>
-                    ))}
-                    {c.bmi != null && (
-                      <Badge variant="outline" className="text-[10px]">
-                        BMI {c.bmi.toFixed(1)}
-                      </Badge>
-                    )}
+            {candidates.slice(0, 25).map((c) => {
+              const bmiText = formatBmi(c.bmi).text
+              return (
+                <div
+                  key={c.leadId}
+                  onClick={() => onOpenDetail(c)}
+                  className="flex cursor-pointer flex-col gap-2 rounded-lg border p-3 transition-shadow hover:shadow-md sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">
+                      {c.name ?? 'Inconnu'}{' '}
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {c.phone ?? ''}
+                      </span>
+                    </p>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {c.reasons.map((r) => (
+                        <Badge key={r} variant="secondary" className="text-[10px]">
+                          {r}
+                        </Badge>
+                      ))}
+                      {formatBmi(c.bmi).valid && (
+                        <Badge variant="outline" className="text-[10px]">
+                          BMI {bmiText}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
+                  {done[c.leadId] ? (
+                    <Badge className="bg-emerald-500 text-white">
+                      Assigné à {done[c.leadId]}
+                    </Badge>
+                  ) : (
+                    <div
+                      className="flex gap-2"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busy === c.leadId + 'Rain'}
+                        onClick={() => assign(c.leadId, 'Rain', c.reasons.join(' ; '))}
+                      >
+                        {busy === c.leadId + 'Rain' && (
+                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                        )}
+                        Assigner à Rain
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busy === c.leadId + 'Summer'}
+                        onClick={() => assign(c.leadId, 'Summer', c.reasons.join(' ; '))}
+                      >
+                        {busy === c.leadId + 'Summer' && (
+                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                        )}
+                        Assigner à Summer
+                      </Button>
+                    </div>
+                  )}
                 </div>
-                {done[c.leadId] ? (
-                  <Badge className="bg-emerald-500 text-white">
-                    Assigné à {done[c.leadId]}
-                  </Badge>
-                ) : (
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={busy === c.leadId + 'Rain'}
-                      onClick={() => assign(c.leadId, 'Rain', c.reasons.join(' ; '))}
-                    >
-                      {busy === c.leadId + 'Rain' && (
-                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                      )}
-                      Assigner à Rain
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={busy === c.leadId + 'Summer'}
-                      onClick={() => assign(c.leadId, 'Summer', c.reasons.join(' ; '))}
-                    >
-                      {busy === c.leadId + 'Summer' && (
-                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                      )}
-                      Assigner à Summer
-                    </Button>
-                  </div>
-                )}
-              </div>
-            ))}
+              )
+            })}
             {candidates.length > 25 && (
               <p className="pt-1 text-center text-xs text-muted-foreground">
                 + {candidates.length - 25} autres dossiers

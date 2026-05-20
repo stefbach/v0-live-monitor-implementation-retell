@@ -313,8 +313,10 @@ export interface HandoffCandidate {
   leadId: string
   name: string | null
   phone: string | null
+  email: string | null
   reasons: string[]
   bmi: number | null
+  source: string | null
   qualification: string | null
   lastCall: string
   attempts: number
@@ -377,8 +379,10 @@ export function computeHandoffCandidates(
       leadId: lead?.id ?? k,
       name: lead?.nom ?? null,
       phone: lead?.numero_telephone ?? latest.toNumber ?? null,
+      email: lead?.email ?? null,
       reasons,
       bmi: lead?.bmi ?? null,
+      source: lead?.source_lead ?? null,
       qualification: lead?.qualification ?? null,
       lastCall: latest.startTime,
       attempts: list.length,
