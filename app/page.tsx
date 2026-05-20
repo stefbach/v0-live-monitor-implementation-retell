@@ -13,8 +13,6 @@ import { SourceAttribution } from '@/components/dashboard/source-attribution'
 import { AttemptFunnel } from '@/components/dashboard/attempt-funnel'
 import { AgentChain } from '@/components/dashboard/agent-chain'
 import { EligibilityPipeline } from '@/components/dashboard/eligibility-pipeline'
-import { DurationHistogram } from '@/components/dashboard/duration-histogram'
-import { VerbatimPanel } from '@/components/dashboard/verbatim-panel'
 import { AgentPerformance } from '@/components/dashboard/agent-performance'
 import { InsightsPanel } from '@/components/dashboard/ai-insights/insights-panel'
 import { DirectorView } from '@/components/dashboard/director/director-view'
@@ -150,11 +148,6 @@ export default function DashboardPage() {
 
               <EligibilityPipeline leads={leads} isLoading={isLoading} />
 
-              <div className="grid gap-6 lg:grid-cols-2">
-                <DurationHistogram calls={filteredCalls} isLoading={isLoading} />
-                <VerbatimPanel calls={filteredCalls} isLoading={isLoading} />
-              </div>
-
               <AgentPerformance
                 filteredCalls={filteredCalls}
                 confirmedRdvLeadKeys={confirmedRdvLeadKeys}
@@ -241,8 +234,6 @@ export default function DashboardPage() {
                   isLoading={isLoading}
                 />
                 <EligibilityPipeline leads={leads} isLoading={isLoading} />
-                <DurationHistogram calls={filteredCalls} isLoading={isLoading} />
-                <VerbatimPanel calls={filteredCalls} isLoading={isLoading} />
                 <AgentPerformance
                   filteredCalls={filteredCalls}
                   confirmedRdvLeadKeys={confirmedRdvLeadKeys}

@@ -21,6 +21,8 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ApiStatus } from './api-status'
 import { DetailSlideOver } from './detail-slideover'
+import { DurationHistogram } from '../duration-histogram'
+import { VerbatimPanel } from '../verbatim-panel'
 import { useT } from '@/lib/hooks/use-t'
 import {
   computeDirectorKpis,
@@ -82,6 +84,12 @@ export function DirectorView({
   const leadsClassified = useMemo(
     () => Object.values(qualCounts).reduce((s, n) => s + n, 0),
     [qualCounts]
+  )
+  // Calls without metadata.lead_id — surfaced via a link under the
+  // Qualifications card (#3)
+  const noMetaCalls = useMemo(
+    () => filteredCalls.filter((c) => !c.meta?.leadId),
+    [filteredCalls]
   )
   const phase = useMemo(() => computePhaseTracking(filteredCalls), [filteredCalls])
   const agents = useMemo(() => computeAgentBuckets(filteredCalls), [filteredCalls])
@@ -209,9 +217,28 @@ export function DirectorView({
             </div>
           </div>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            Les cards comptent les <strong>leads uniques</strong> (état CRM le plus
-            récent), pas les appels — la somme ne correspond donc pas au total
-            d&apos;appels.
+            Les cards affichent les <strong>leads uniques</strong> par état CRM actuel
+            (<code className="font-mono text-[10px]">leads_rdv.qualification</code>).
+            Un lead appelé plusieurs fois ne compte qu&apos;une fois. Les appels sans{' '}
+            <code className="font-mono text-[10px]">lead_id</code> dans la metadata
+            ne sont pas rattachés à un lead CRM.
+            {noMetaCalls.length > 0 && (
+              <>
+                {' '}
+                <button
+                  onClick={() =>
+                    setPanel({
+                      title: `${noMetaCalls.length} appels sans metadata`,
+                      calls: noMetaCalls,
+                      raw: true,
+                    })
+                  }
+                  className="font-medium text-blue-400 underline-offset-2 hover:underline"
+                >
+                  Voir les {noMetaCalls.length} appels sans metadata
+                </button>
+              </>
+            )}
           </p>
         </CardHeader>
         <CardContent>
@@ -345,6 +372,22 @@ export function DirectorView({
           </CardContent>
         </Card>
       </div>
+
+      {/* #8 — Analyse des appels (fusion Duration + Verbatims) */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Analyse des appels</CardTitle>
+          <CardDescription>
+            Distribution des durées (à gauche) · ce qu&apos;ils ont dit (à droite)
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <DurationHistogram calls={filteredCalls} isLoading={false} />
+            <VerbatimPanel calls={filteredCalls} isLoading={false} />
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Dossiers à confier */}
       <HandoffSection candidates={handoff} />
