@@ -111,7 +111,12 @@ export default function DashboardPage() {
                 isLoading={isLoading}
               />
 
-              <CallHeatmap calls={filteredCalls} isLoading={isLoading} />
+              <CallHeatmap
+                calls={filteredCalls}
+                confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+                onSelectCall={handleCallSelect}
+                isLoading={isLoading}
+              />
 
               <CostAdvanced
                 allCalls={allCalls}
@@ -206,7 +211,12 @@ export default function DashboardPage() {
                   leads={leads}
                   isLoading={isLoading}
                 />
-                <CallHeatmap calls={filteredCalls} isLoading={isLoading} />
+                <CallHeatmap
+                calls={filteredCalls}
+                confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+                onSelectCall={handleCallSelect}
+                isLoading={isLoading}
+              />
                 <CostAdvanced
                   allCalls={allCalls}
                   filteredCalls={filteredCalls}

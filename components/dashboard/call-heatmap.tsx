@@ -6,59 +6,99 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { computeHeatmap } from '@/lib/analytics'
+import { useT } from '@/lib/hooks/use-t'
+import { DetailSlideOver } from './director/detail-slideover'
 import type { CallLogEnriched } from '@/lib/types'
 
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const DAY_KEYS = ['day.sun', 'day.mon', 'day.tue', 'day.wed', 'day.thu', 'day.fri', 'day.sat']
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 
 interface Props {
   calls: CallLogEnriched[]
+  confirmedRdvLeadKeys?: Set<string>
+  onSelectCall?: (call: CallLogEnriched) => void
   isLoading?: boolean
 }
 
 type Mode = 'answer' | 'rdv'
 
-function colorFor(rate: number, mode: Mode, total: number): string {
-  if (total === 0) return 'bg-muted/30'
-  const intensity = Math.min(1, rate / (mode === 'rdv' ? 30 : 80))
-  if (mode === 'answer') {
-    // blue gradient
-    if (intensity < 0.15) return 'bg-blue-500/10'
-    if (intensity < 0.3) return 'bg-blue-500/25'
-    if (intensity < 0.5) return 'bg-blue-500/40'
-    if (intensity < 0.7) return 'bg-blue-500/60'
-    return 'bg-blue-500/85'
+// Linear blend from light gray (zinc-200) to deep emerald (emerald-800)
+// driven by the rate. Returns inline CSS so it renders identically in
+// dark and light themes.
+function cellStyle(
+  rate: number,
+  total: number
+): { background: string; color: string } {
+  if (total === 0) {
+    return {
+      background: 'rgba(120, 120, 120, 0.10)',
+      color: 'rgba(160, 160, 160, 0.5)',
+    }
   }
-  // emerald for RDV
-  if (intensity < 0.15) return 'bg-emerald-500/10'
-  if (intensity < 0.3) return 'bg-emerald-500/25'
-  if (intensity < 0.5) return 'bg-emerald-500/45'
-  if (intensity < 0.7) return 'bg-emerald-500/65'
-  return 'bg-emerald-500/90'
+  // Normalise: 0 % → 0, 60 %+ → 1 (avoid washed-out greens at the top)
+  const t = Math.max(0, Math.min(1, rate / 60))
+  const lerp = (a: number, b: number) => Math.round(a + (b - a) * t)
+  // light → dark: rgb(229,231,235) → rgb(6,95,70)
+  const r = lerp(229, 6)
+  const g = lerp(231, 95)
+  const b = lerp(235, 70)
+  return {
+    background: `rgb(${r}, ${g}, ${b})`,
+    color: t > 0.5 ? 'rgb(255,255,255)' : 'rgb(30,30,40)',
+  }
 }
 
-export function CallHeatmap({ calls, isLoading }: Props) {
+export function CallHeatmap({
+  calls,
+  confirmedRdvLeadKeys,
+  onSelectCall,
+  isLoading,
+}: Props) {
+  const { t } = useT()
   const [mode, setMode] = useState<Mode>('answer')
+  const [panel, setPanel] = useState<{
+    title: string
+    calls: CallLogEnriched[]
+  } | null>(null)
+
   const cells = useMemo(() => computeHeatmap(calls), [calls])
 
-  const topSlots = useMemo(() => {
-    return [...cells]
-      .filter((c) => c.total >= 3) // require minimum sample
-      .sort((a, b) => (mode === 'rdv' ? b.rdvRate - a.rdvRate : b.answerRate - a.answerRate))
+  // Top 3 slots: minimum 3 calls in the slot to avoid noise
+  const topKey = (dow: number, h: number) => `${dow}-${h}`
+  const topSet = useMemo(() => {
+    const arr = [...cells]
+      .filter((c) => c.total >= 3)
+      .sort((a, b) =>
+        mode === 'rdv' ? b.rdvRate - a.rdvRate : b.answerRate - a.answerRate
+      )
       .slice(0, 3)
+    return {
+      set: new Set(arr.map((c) => topKey(c.dayOfWeek, c.hour))),
+      list: arr,
+    }
   }, [cells, mode])
 
   if (isLoading) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">When to call</CardTitle>
+          <CardTitle className="text-base">{t('heatmap.title')}</CardTitle>
         </CardHeader>
         <CardContent>
           <Skeleton className="h-72 w-full" />
         </CardContent>
       </Card>
     )
+  }
+
+  const openSlot = (d: number, h: number) => {
+    const slotCalls = calls.filter(
+      (c) => c.dayOfWeek === d && c.hourOfDay === h
+    )
+    setPanel({
+      title: `${t(DAY_KEYS[d])} ${h}h00–${h + 1}h00 · ${slotCalls.length} appels`,
+      calls: slotCalls,
+    })
   }
 
   return (
@@ -68,12 +108,10 @@ export function CallHeatmap({ calls, isLoading }: Props) {
           <div>
             <CardTitle className="text-base flex items-center gap-2">
               <Flame className="h-4 w-4 text-amber-500" />
-              When to call — Day × Hour
+              {t('heatmap.title')}
             </CardTitle>
             <CardDescription>
-              {mode === 'answer'
-                ? 'Real answer rate by slot (call >15s, valid disconnect)'
-                : 'RDV conversion rate by slot'}
+              {mode === 'answer' ? t('heatmap.desc.answer') : t('heatmap.desc.rdv')}
             </CardDescription>
           </div>
           <div className="flex items-center gap-1 rounded-md border bg-background p-0.5">
@@ -85,7 +123,7 @@ export function CallHeatmap({ calls, isLoading }: Props) {
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              <PhoneCall className="h-3 w-3" /> Answer rate
+              <PhoneCall className="h-3 w-3" /> {t('heatmap.mode.answer')}
             </button>
             <button
               onClick={() => setMode('rdv')}
@@ -95,7 +133,7 @@ export function CallHeatmap({ calls, isLoading }: Props) {
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              <CalendarCheck className="h-3 w-3" /> RDV rate
+              <CalendarCheck className="h-3 w-3" /> {t('heatmap.mode.rdv')}
             </button>
           </div>
         </div>
@@ -104,33 +142,58 @@ export function CallHeatmap({ calls, isLoading }: Props) {
         {/* Heatmap grid */}
         <div className="overflow-x-auto">
           <div className="inline-block min-w-full">
+            {/* Hour header row */}
             <div className="flex">
-              <div className="w-10 shrink-0" />
-              <div className="grid grid-cols-24 gap-px flex-1" style={{ gridTemplateColumns: 'repeat(24, minmax(0, 1fr))' }}>
+              <div className="w-12 shrink-0" />
+              <div
+                className="grid gap-1 flex-1"
+                style={{ gridTemplateColumns: 'repeat(24, minmax(36px, 1fr))' }}
+              >
                 {HOURS.map((h) => (
-                  <div key={h} className="text-[9px] text-muted-foreground text-center font-mono">
-                    {h % 3 === 0 ? `${h}h` : ''}
+                  <div
+                    key={h}
+                    className="text-center text-[10px] font-mono text-muted-foreground"
+                  >
+                    {h}h
                   </div>
                 ))}
               </div>
             </div>
-            {DAYS.map((day, d) => (
-              <div key={day} className="flex items-center gap-px mt-px">
-                <div className="w-10 shrink-0 text-[11px] text-muted-foreground font-medium">{day}</div>
+            {/* Day rows */}
+            {DAY_KEYS.map((dayKey, d) => (
+              <div key={dayKey} className="mt-1 flex items-center gap-1">
+                <div className="w-12 shrink-0 text-xs font-medium text-muted-foreground">
+                  {t(dayKey)}
+                </div>
                 <div
-                  className="grid gap-px flex-1"
-                  style={{ gridTemplateColumns: 'repeat(24, minmax(0, 1fr))' }}
+                  className="grid gap-1 flex-1"
+                  style={{ gridTemplateColumns: 'repeat(24, minmax(36px, 1fr))' }}
                 >
                   {HOURS.map((h) => {
-                    const cell = cells.find((c) => c.dayOfWeek === d && c.hour === h)!
+                    const cell = cells.find(
+                      (c) => c.dayOfWeek === d && c.hour === h
+                    )!
                     const rate = mode === 'rdv' ? cell.rdvRate : cell.answerRate
-                    const tip = `${day} ${h}:00 · ${cell.total} calls · ${mode === 'rdv' ? `${cell.rdv} RDV` : `${cell.answered} answered`} (${rate.toFixed(0)}%)`
+                    const style = cellStyle(rate, cell.total)
+                    const isTop = topSet.set.has(topKey(d, h))
+                    const tip = `${t(dayKey)} ${h}h · ${cell.total} appels · ${
+                      mode === 'rdv'
+                        ? `${cell.rdv} RDV`
+                        : `${cell.answered} décrochés`
+                    } (${rate.toFixed(0)}%)`
                     return (
-                      <div
+                      <button
                         key={h}
                         title={tip}
-                        className={`h-6 rounded-sm ${colorFor(rate, mode, cell.total)} hover:ring-1 hover:ring-foreground/50 cursor-help`}
-                      />
+                        onClick={() => openSlot(d, h)}
+                        disabled={cell.total === 0}
+                        style={style}
+                        className={`relative flex h-9 items-center justify-center rounded text-[11px] font-semibold transition-transform hover:scale-105 disabled:cursor-default disabled:hover:scale-100 ${
+                          isTop ? 'ring-2 ring-amber-500 z-10' : ''
+                        }`}
+                      >
+                        {cell.total > 0 ? `${rate.toFixed(0)}%` : ''}
+                      </button>
                     )
                   })}
                 </div>
@@ -140,23 +203,43 @@ export function CallHeatmap({ calls, isLoading }: Props) {
         </div>
 
         {/* Legend + top slots */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-            <span>Low</span>
-            <span className={`h-3 w-4 rounded-sm ${colorFor(5, mode, 1)}`} />
-            <span className={`h-3 w-4 rounded-sm ${colorFor(25, mode, 1)}`} />
-            <span className={`h-3 w-4 rounded-sm ${colorFor(50, mode, 1)}`} />
-            <span className={`h-3 w-4 rounded-sm ${colorFor(75, mode, 1)}`} />
-            <span className={`h-3 w-4 rounded-sm ${colorFor(100, mode, 1)}`} />
-            <span>High</span>
+        <div className="space-y-2 pt-1">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <span>{t('heatmap.legend.low')}</span>
+              {[0, 15, 30, 45, 60].map((r) => {
+                const s = cellStyle(r, 1)
+                return (
+                  <span
+                    key={r}
+                    style={s}
+                    className="inline-flex h-4 w-7 items-center justify-center rounded text-[10px] font-medium"
+                  >
+                    {r}%
+                  </span>
+                )
+              })}
+              <span>{t('heatmap.legend.high')}</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground italic">
+              {mode === 'answer'
+                ? t('heatmap.legend.answer')
+                : t('heatmap.legend.rdv')}
+            </p>
           </div>
-          {topSlots.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-muted-foreground">Top slots:</span>
-              {topSlots.map((s) => (
-                <Badge key={`${s.dayOfWeek}-${s.hour}`} variant="outline" className="font-mono text-xs">
-                  {DAYS[s.dayOfWeek]} {s.hour}h ·{' '}
-                  <span className={mode === 'rdv' ? 'text-emerald-500' : 'text-blue-500'}>
+          {topSet.list.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <span className="text-xs text-muted-foreground">
+                {t('heatmap.top')} :
+              </span>
+              {topSet.list.map((s) => (
+                <Badge
+                  key={`${s.dayOfWeek}-${s.hour}`}
+                  variant="outline"
+                  className="border-amber-500/50 bg-amber-500/5 font-mono text-xs"
+                >
+                  {t(DAY_KEYS[s.dayOfWeek])} {s.hour}h ·{' '}
+                  <span className="font-semibold text-emerald-500">
                     {(mode === 'rdv' ? s.rdvRate : s.answerRate).toFixed(0)}%
                   </span>{' '}
                   <span className="text-muted-foreground">({s.total})</span>
@@ -166,6 +249,19 @@ export function CallHeatmap({ calls, isLoading }: Props) {
           )}
         </div>
       </CardContent>
+
+      {/* Click-through slide-over: calls of the selected slot */}
+      <DetailSlideOver
+        open={!!panel}
+        onOpenChange={(o) => !o && setPanel(null)}
+        title={panel?.title ?? ''}
+        calls={panel?.calls ?? []}
+        confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+        onSelectCall={(c) => {
+          setPanel(null)
+          onSelectCall?.(c)
+        }}
+      />
     </Card>
   )
 }
