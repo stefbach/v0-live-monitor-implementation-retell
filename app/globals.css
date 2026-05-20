@@ -74,6 +74,43 @@
   --sidebar-ring: oklch(0.439 0 0);
 }
 
+/* OCC Brand theme — bleu OCC dominant, rose accent uniquement pour
+   les éléments primaires (badges actifs, boutons primaires). */
+.theme-occ {
+  --background: #F0F2FA;
+  --foreground: #1a1a2e;
+  --card: #ffffff;
+  --card-foreground: #1a1a2e;
+  --popover: #ffffff;
+  --popover-foreground: #1a1a2e;
+  --primary: #5B6BBF;
+  --primary-foreground: #ffffff;
+  --secondary: #E4E8F5;
+  --secondary-foreground: #1a1a2e;
+  --muted: #E4E8F5;
+  --muted-foreground: #5a607a;
+  --accent: #C9579A;
+  --accent-foreground: #ffffff;
+  --destructive: #DC2626;
+  --destructive-foreground: #ffffff;
+  --border: #C7CFE8;
+  --input: #C7CFE8;
+  --ring: #5B6BBF;
+  --chart-1: #5B6BBF;
+  --chart-2: #C9579A;
+  --chart-3: #7B89D0;
+  --chart-4: #E68FB8;
+  --chart-5: #1a1a2e;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #1a1a2e;
+  --sidebar-primary: #5B6BBF;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #E4E8F5;
+  --sidebar-accent-foreground: #1a1a2e;
+  --sidebar-border: #C7CFE8;
+  --sidebar-ring: #5B6BBF;
+}
+
 @theme inline {
   --font-sans: 'Geist', 'Geist Fallback';
   --font-mono: 'Geist Mono', 'Geist Mono Fallback';
