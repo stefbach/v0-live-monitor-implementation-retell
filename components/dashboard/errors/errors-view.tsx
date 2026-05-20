@@ -17,6 +17,9 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useDashboardErrors } from '@/lib/hooks/use-dashboard'
 import { DirectionIcon } from '../direction-indicator'
+import { AnomalyDetailSheet } from './anomaly-detail-sheet'
+import type { Lead } from '@/lib/types'
+import type { Anomaly } from '@/lib/live-alerts'
 import {
   computeRepondeurs,
   computeRobotLeads,
@@ -26,14 +29,16 @@ import type { CallLogEnriched } from '@/lib/types'
 
 interface Props {
   allCalls: CallLogEnriched[]
+  leads: Lead[]
 }
 
-export function ErrorsView({ allCalls }: Props) {
+export function ErrorsView({ allCalls, leads }: Props) {
   const { errors, isLoading, refresh } = useDashboardErrors()
   const [typeFilter, setTypeFilter] = useState('all')
   const [dateFilter, setDateFilter] = useState('')
   const [resolving, setResolving] = useState<string | null>(null)
   const [calledBack, setCalledBack] = useState<Set<string>>(new Set())
+  const [anomalyPanel, setAnomalyPanel] = useState<Anomaly | null>(null)
 
   const repondeurs = useMemo(() => computeRepondeurs(allCalls), [allCalls])
   const robotLeads = useMemo(() => computeRobotLeads(allCalls), [allCalls])
@@ -299,9 +304,10 @@ export function ErrorsView({ allCalls }: Props) {
           ) : (
             <div className="grid gap-2 sm:grid-cols-2">
               {anomalies.slice(0, 40).map((a) => (
-                <div
+                <button
                   key={a.kind + a.key}
-                  className="flex items-center justify-between gap-2 rounded-md border p-2.5 text-sm"
+                  onClick={() => setAnomalyPanel(a)}
+                  className="flex items-center justify-between gap-2 rounded-md border p-2.5 text-left text-sm transition-shadow hover:shadow-md"
                 >
                   <div className="min-w-0">
                     <p className="font-medium">{a.label}</p>
@@ -312,12 +318,20 @@ export function ErrorsView({ allCalls }: Props) {
                   <Badge variant="secondary" className="shrink-0">
                     ×{a.count}
                   </Badge>
-                </div>
+                </button>
               ))}
             </div>
           )}
         </CardContent>
       </Card>
+
+      <AnomalyDetailSheet
+        anomaly={anomalyPanel}
+        allCalls={allCalls}
+        leads={leads}
+        open={!!anomalyPanel}
+        onOpenChange={(o) => !o && setAnomalyPanel(null)}
+      />
     </div>
   )
 }

@@ -97,7 +97,7 @@ export default function DashboardPage() {
             </TabsContent>
 
             <TabsContent value="erreurs" className="mt-6">
-              <ErrorsView allCalls={allCalls} />
+              <ErrorsView allCalls={allCalls} leads={leads} />
             </TabsContent>
 
             <TabsContent value="stats" className="mt-6 space-y-6">
@@ -196,7 +196,7 @@ export default function DashboardPage() {
               />
             )}
 
-            {activeTab === 'erreurs' && <ErrorsView allCalls={allCalls} />}
+            {activeTab === 'erreurs' && <ErrorsView allCalls={allCalls} leads={leads} />}
 
             {activeTab === 'stats' && (
               <>
