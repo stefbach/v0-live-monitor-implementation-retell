@@ -13,7 +13,6 @@ import {
   Users,
   UserPlus,
   Loader2,
-  Sun,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -27,7 +26,6 @@ import { HandoffDetailSheet } from './handoff-detail-sheet'
 import { DurationHistogram } from '../duration-histogram'
 import { VerbatimPanel } from '../verbatim-panel'
 import { useT } from '@/lib/hooks/use-t'
-import { computeHeatmap } from '@/lib/analytics'
 import { formatBmi } from '@/lib/bmi'
 import {
   computeDirectorKpis,
@@ -95,22 +93,6 @@ export function DirectorView({
   const phase = useMemo(() => computePhaseTracking(filteredCalls), [filteredCalls])
   const agents = useMemo(() => computeAgentBuckets(filteredCalls), [filteredCalls])
 
-  // Best slot over the last 7 days (UK), used by the KPI tile (#11).
-  // Independent of the global period filter so the recommendation is
-  // always grounded in a meaningful sample.
-  const bestSlot7d = useMemo(() => {
-    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000
-    const last7d = allCalls.filter((c) => {
-      const t = c.startTime ? new Date(c.startTime).getTime() : 0
-      return t >= cutoff
-    })
-    const cells = computeHeatmap(last7d)
-    return (
-      [...cells]
-        .filter((c) => c.total >= 3)
-        .sort((a, b) => b.answerRate - a.answerRate)[0] ?? null
-    )
-  }, [allCalls])
   const handoff = useMemo(
     () => computeHandoffCandidates(filteredCalls, leads),
     [filteredCalls, leads]
@@ -140,19 +122,6 @@ export function DirectorView({
     )
   }
 
-  const DAY_KEYS = [
-    'day.sun',
-    'day.mon',
-    'day.tue',
-    'day.wed',
-    'day.thu',
-    'day.fri',
-    'day.sat',
-  ]
-  const bestSlotValue = bestSlot7d
-    ? `${t(DAY_KEYS[bestSlot7d.dayOfWeek])} ${bestSlot7d.hour}h · ${bestSlot7d.answerRate.toFixed(0)}%`
-    : '—'
-
   const kpiCards: {
     id: string
     label: string
@@ -161,7 +130,6 @@ export function DirectorView({
     color: string
     highlight?: boolean
   }[] = [
-    { id: 'best_slot', label: 'Meilleur créneau (7j)', value: bestSlotValue, icon: Sun, color: 'bg-amber-500/10 text-amber-500', highlight: true },
     { id: 'total', label: 'Total appels', value: kpis.totalCalls.toLocaleString(), icon: Phone, color: 'bg-blue-500/10 text-blue-500' },
     { id: 'answered', label: 'Décrochés', value: `${kpis.answered.toLocaleString()} · ${kpis.answeredPct.toFixed(0)}%`, icon: PhoneCall, color: 'bg-emerald-500/10 text-emerald-500' },
     { id: 'cost', label: 'Coût consommé', value: fmtUsd(kpis.cost), icon: DollarSign, color: 'bg-amber-500/10 text-amber-500' },
@@ -194,26 +162,7 @@ export function DirectorView({
         {kpiCards.map((k) => (
           <button
             key={k.id}
-            onClick={() => {
-              if (k.id === 'best_slot') {
-                if (!bestSlot7d) return
-                const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000
-                const slotCalls = allCalls.filter((c) => {
-                  const t2 = c.startTime ? new Date(c.startTime).getTime() : 0
-                  return (
-                    t2 >= cutoff &&
-                    c.dayOfWeek === bestSlot7d.dayOfWeek &&
-                    c.hourOfDay === bestSlot7d.hour
-                  )
-                })
-                setPanel({
-                  title: `${t(DAY_KEYS[bestSlot7d.dayOfWeek])} ${bestSlot7d.hour}h · ${slotCalls.length} appels (7j)`,
-                  calls: slotCalls,
-                })
-                return
-              }
-              openKpi(k.id as KpiId, k.label)
-            }}
+            onClick={() => openKpi(k.id as KpiId, k.label)}
             className="text-left"
           >
             <Card
