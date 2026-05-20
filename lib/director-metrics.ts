@@ -110,10 +110,11 @@ export interface QualCount {
 // are otherwise still "open" (not already RDV / not interested / faux numéro).
 // Count calls (not distinct leads) by their lead's CRM qualification, so
 // the sum of the cards equals the total number of calls in the period.
-// Calls without a lead or with an unmapped qualification fall back to
-// NOUVEAU DOSSIER so every call lands in a visible card.
+// NOUVEAU DOSSIER is the CRM default state before any call — calls still
+// tagged that way are re-routed to a concrete outcome based on call
+// signals so they don't disappear into a no-op card.
 // Failed-strict RDV (CRM marks RDV MEDECIN but the criteria of #1 don't
-// match the lead's chain) are re-routed to RAPPEL since they need a
+// match the lead's chain) are routed to RAPPEL since they need a
 // follow-up to actually confirm.
 export function computeQualificationCounts(
   calls: CallLogEnriched[]
@@ -134,20 +135,21 @@ export function computeQualificationCounts(
   const confirmedRdv = computeConfirmedRdvLeads(calls)
   for (const c of calls) {
     let key = qualKeyFromRaw(c.lead?.qualification)
-    // Strict RDV CONFIRMÉ override (#1): keep the card honest by sending
-    // failed-strict leads to RAPPEL (they need a follow-up).
+    // Strict RDV CONFIRMÉ override (#1).
     if (key === 'rdv_confirme') {
       const lk = leadGroupKey(c)
       if (!lk || !confirmedRdv.has(lk)) key = 'rappel'
     }
-    // Unmapped raw → default NOUVEAU DOSSIER so every call is visible.
-    if (key === 'autre') key = 'nouveau_dossier'
+    // NOUVEAU DOSSIER / unmapped → infer from call signals so every call
+    // lands in a concrete visible bucket.
+    if (key === 'nouveau_dossier' || key === 'autre') {
+      if (c.answered) key = 'rappel'
+      else if (c.inVoicemail || c.voicemailSuspected) key = 'repondeur'
+      else key = 'pas_de_reponse'
+    }
     // NON ELIGIBLE overlay: only for still-open leads.
     if (
-      (key === 'nouveau_dossier' ||
-        key === 'pas_de_reponse' ||
-        key === 'rappel' ||
-        key === 'repondeur') &&
+      (key === 'pas_de_reponse' || key === 'rappel' || key === 'repondeur') &&
       c.lead
     ) {
       const elig = computeEligibility({
@@ -197,7 +199,11 @@ export function callsForQualification(
       const lk = leadGroupKey(c)
       if (!lk || !confirmed.has(lk)) raw = 'rappel'
     }
-    if (raw === 'autre') raw = 'nouveau_dossier'
+    if (raw === 'nouveau_dossier' || raw === 'autre') {
+      if (c.answered) raw = 'rappel'
+      else if (c.inVoicemail || c.voicemailSuspected) raw = 'repondeur'
+      else raw = 'pas_de_reponse'
+    }
     return raw === key
   })
 }

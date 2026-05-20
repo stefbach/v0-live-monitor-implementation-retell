@@ -130,6 +130,11 @@ export const QUAL_META: Record<QualKey, QualMeta> = {
 }
 
 // Cards shown on the Vue d'ensemble, in display order.
+// NOUVEAU DOSSIER is intentionally NOT in the cards: that label is the
+// CRM default state before any call has been placed. Calls whose lead is
+// still tagged NOUVEAU DOSSIER are re-routed into a concrete bucket
+// (RAPPEL / REPONDEUR / PAS DE REPONSE) based on the call signals — see
+// computeQualificationCounts in lib/director-metrics.ts.
 export const QUALIFICATION_CARDS: QualKey[] = [
   'rdv_confirme',
   'rappel',
@@ -138,7 +143,6 @@ export const QUALIFICATION_CARDS: QualKey[] = [
   'repondeur',
   'faux_numero',
   'non_eligible',
-  'nouveau_dossier',
   'ne_pas_rappeler',
 ]
 
