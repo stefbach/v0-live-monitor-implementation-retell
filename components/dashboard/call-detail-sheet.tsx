@@ -46,6 +46,7 @@ interface CallDetailSheetProps {
   onOpenChange: (open: boolean) => void
   allCalls?: CallLogEnriched[]
   confirmedRdvLeadKeys?: Set<string>
+  handoffLeadKeys?: Set<string>
   onSelectCall?: (call: CallLogEnriched) => void
 }
 
@@ -105,6 +106,7 @@ export function CallDetailSheet({
   onOpenChange,
   allCalls = [],
   confirmedRdvLeadKeys,
+  handoffLeadKeys,
   onSelectCall,
 }: CallDetailSheetProps) {
   const confirmed = confirmedRdvLeadKeys ?? new Set<string>()
@@ -156,7 +158,7 @@ export function CallDetailSheet({
             <div className="flex flex-wrap items-center gap-2">
               {getStatusBadge(call.status)}
               {(() => {
-                const m = QUAL_META[effectiveQualKey(call, confirmed)]
+                const m = QUAL_META[effectiveQualKey(call, confirmed, handoffLeadKeys)]
                 return (
                   <Badge variant="outline" className={m.badgeClass}>
                     {m.label}

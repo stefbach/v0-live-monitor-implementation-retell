@@ -15,6 +15,7 @@ import { applyFilters } from '@/lib/filters'
 import { useFiltersStore } from '@/lib/stores/filters-store'
 import { computeBusinessMetrics } from '@/lib/leads'
 import { computeConfirmedRdvLeads } from '@/lib/rdv'
+import { computeHandoffLeadKeys } from '@/lib/director-metrics'
 
 const fetcher = async <T>(url: string): Promise<T> => {
   const res = await fetch(url)
@@ -37,6 +38,7 @@ export interface DashboardData {
   callMetrics: CallMetrics
   businessMetrics: BusinessMetrics | null
   confirmedRdvLeadKeys: Set<string>
+  handoffLeadKeys: Set<string>
   filters: DashboardFilters
   isLoading: boolean
   isError: unknown
@@ -105,6 +107,14 @@ export function useDashboardData(): DashboardData {
     [allCalls]
   )
 
+  // Leads flagged for human handoff (≥20s call + handoff signal or
+  // explicit CRM tag). Drives both the qualif card and the handoff
+  // section — same Set so the counts match.
+  const handoffLeadKeys = useMemo(
+    () => computeHandoffLeadKeys(allCalls, leads),
+    [allCalls, leads]
+  )
+
   return {
     allCalls,
     filteredCalls,
@@ -113,6 +123,7 @@ export function useDashboardData(): DashboardData {
     callMetrics,
     businessMetrics,
     confirmedRdvLeadKeys,
+    handoffLeadKeys,
     filters,
     isLoading,
     isError: error,

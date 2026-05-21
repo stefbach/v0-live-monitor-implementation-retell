@@ -49,6 +49,7 @@ interface Props {
   leads: Lead[]
   isLoading: boolean
   confirmedRdvLeadKeys: Set<string>
+  handoffLeadKeys: Set<string>
   onSelectCall: (call: CallLogEnriched) => void
 }
 
@@ -65,6 +66,7 @@ export function DirectorView({
   leads,
   isLoading,
   confirmedRdvLeadKeys,
+  handoffLeadKeys,
   onSelectCall,
 }: Props) {
   const { t } = useT()
@@ -88,8 +90,8 @@ export function DirectorView({
     [filteredCalls, threshold]
   )
   const qualCounts = useMemo(
-    () => computeQualificationCounts(filteredCalls),
-    [filteredCalls]
+    () => computeQualificationCounts(filteredCalls, confirmedRdvLeadKeys, handoffLeadKeys),
+    [filteredCalls, confirmedRdvLeadKeys, handoffLeadKeys]
   )
   const phase = useMemo(() => computePhaseTracking(filteredCalls), [filteredCalls])
   const agents = useMemo(() => computeAgentBuckets(filteredCalls), [filteredCalls])
@@ -104,7 +106,7 @@ export function DirectorView({
   const openQual = (key: QualKey, title: string) =>
     setPanel({
       title,
-      calls: callsForQualification(filteredCalls, key),
+      calls: callsForQualification(filteredCalls, key, confirmedRdvLeadKeys, handoffLeadKeys),
       // The RAPPEL card surfaces leads_rdv.rappel_rdv per row.
       rappelDate: key === 'rappel',
       // "À passer à l'humain" surfaces the call summary so the operator
@@ -370,6 +372,7 @@ export function DirectorView({
         candidate={handoffPanel}
         allCalls={allCalls}
         confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+        handoffLeadKeys={handoffLeadKeys}
         open={!!handoffPanel}
         onOpenChange={(o) => !o && setHandoffPanel(null)}
       />
@@ -384,6 +387,7 @@ export function DirectorView({
         showRappelDate={panel?.rappelDate}
         showSummary={panel?.summary}
         confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+        handoffLeadKeys={handoffLeadKeys}
         onSelectCall={(c) => {
           setPanel(null)
           onSelectCall(c)

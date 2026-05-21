@@ -43,6 +43,7 @@ export default function DashboardPage() {
     callMetrics,
     businessMetrics,
     confirmedRdvLeadKeys,
+    handoffLeadKeys,
     isLoading,
     refresh,
   } = useDashboardData()
@@ -93,6 +94,7 @@ export default function DashboardPage() {
                 leads={leads}
                 isLoading={isLoading}
                 confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+                handoffLeadKeys={handoffLeadKeys}
                 onSelectCall={handleCallSelect}
               />
             </TabsContent>
@@ -113,6 +115,7 @@ export default function DashboardPage() {
                 allCalls={allCalls}
                 leads={leads}
                 confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+                handoffLeadKeys={handoffLeadKeys}
                 onSelectCall={handleCallSelect}
                 isLoading={isLoading}
               />
@@ -120,6 +123,7 @@ export default function DashboardPage() {
               <CallHeatmap
                 calls={filteredCalls}
                 confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+                handoffLeadKeys={handoffLeadKeys}
                 onSelectCall={handleCallSelect}
                 isLoading={isLoading}
               />
@@ -159,6 +163,7 @@ export default function DashboardPage() {
               <AgentPerformance
                 filteredCalls={filteredCalls}
                 confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+                handoffLeadKeys={handoffLeadKeys}
                 isLoading={isLoading}
               />
 
@@ -179,6 +184,7 @@ export default function DashboardPage() {
                 calls={filteredCalls}
                 isLoading={isLoading}
                 confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+                handoffLeadKeys={handoffLeadKeys}
                 onCallSelect={handleCallSelect}
               />
             </TabsContent>
@@ -197,6 +203,7 @@ export default function DashboardPage() {
                 leads={leads}
                 isLoading={isLoading}
                 confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+                handoffLeadKeys={handoffLeadKeys}
                 onSelectCall={handleCallSelect}
               />
             )}
@@ -212,12 +219,14 @@ export default function DashboardPage() {
                   allCalls={allCalls}
                   leads={leads}
                   confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+                handoffLeadKeys={handoffLeadKeys}
                   onSelectCall={handleCallSelect}
                   isLoading={isLoading}
                 />
                 <CallHeatmap
                 calls={filteredCalls}
                 confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+                handoffLeadKeys={handoffLeadKeys}
                 onSelectCall={handleCallSelect}
                 isLoading={isLoading}
               />
@@ -248,6 +257,7 @@ export default function DashboardPage() {
                 <AgentPerformance
                   filteredCalls={filteredCalls}
                   confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+                handoffLeadKeys={handoffLeadKeys}
                   isLoading={isLoading}
                 />
                 <StatsExtras
@@ -267,6 +277,7 @@ export default function DashboardPage() {
                   calls={filteredCalls}
                   isLoading={isLoading}
                   confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+                handoffLeadKeys={handoffLeadKeys}
                   onCallSelect={handleCallSelect}
                 />
               </div>
@@ -285,6 +296,7 @@ export default function DashboardPage() {
         onOpenChange={setIsSheetOpen}
         allCalls={allCalls}
         confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+                handoffLeadKeys={handoffLeadKeys}
         onSelectCall={handleCallSelect}
       />
     </div>

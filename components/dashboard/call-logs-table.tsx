@@ -28,6 +28,7 @@ interface Props {
   calls: CallLogEnriched[]
   isLoading?: boolean
   confirmedRdvLeadKeys?: Set<string>
+  handoffLeadKeys?: Set<string>
   onCallSelect?: (call: CallLogEnriched) => void
 }
 
@@ -49,6 +50,7 @@ export function CallLogsTable({
   calls,
   isLoading,
   confirmedRdvLeadKeys,
+  handoffLeadKeys,
   onCallSelect,
 }: Props) {
   const confirmed = confirmedRdvLeadKeys ?? new Set<string>()
@@ -162,7 +164,7 @@ export function CallLogsTable({
             <tbody>
               {paginated.map((call) => {
                 const lead = call.lead
-                const q = QUAL_META[effectiveQualKey(call, confirmed)]
+                const q = QUAL_META[effectiveQualKey(call, confirmed, handoffLeadKeys)]
                 const lvl = agentLevel(call.agentName)
                 const leadKey = call.meta?.leadId ?? lead?.id
                 const isMulti = leadKey ? multiAgentLeads.has(leadKey) : false
@@ -265,7 +267,7 @@ export function CallLogsTable({
         <div className="flex flex-col gap-3 lg:hidden">
           {paginated.map((call) => {
             const lead = call.lead
-            const q = QUAL_META[effectiveQualKey(call, confirmed)]
+            const q = QUAL_META[effectiveQualKey(call, confirmed, handoffLeadKeys)]
             return (
               <button
                 key={call.id}

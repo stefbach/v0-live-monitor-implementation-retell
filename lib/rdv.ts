@@ -93,14 +93,40 @@ export function computeConfirmedRdvLeads(
 // routing, no BMI overlay, no callback_scheduled / call_outcome
 // overrides — n8n Agent 2 is now responsible for proper classification
 // in Supabase.
+// Quals where the prospect has actively decided ("not interested", "wrong
+// number", "do not call") or where we've already confirmed an RDV. These
+// are NEVER overridden by the handoff overlay — the lead has a clear
+// terminal state already.
+const HANDOFF_PROTECTED: Set<QualKey> = new Set([
+  'rdv_confirme',
+  'pas_interesse',
+  'faux_numero',
+  'ne_pas_rappeler',
+])
+
 export function effectiveQualKey(
   c: CallLogEnriched,
-  confirmedRdvLeadKeys: Set<string>
+  confirmedRdvLeadKeys: Set<string>,
+  handoffLeadKeys?: Set<string>
 ): QualKey {
   const key = qualKeyFromRaw(c.lead?.qualification)
   if (key === 'rdv_confirme') {
     const lk = leadGroupKey(c)
-    if (!lk || !confirmedRdvLeadKeys.has(lk)) return 'rdv_non_confirme'
+    if (!lk || !confirmedRdvLeadKeys.has(lk)) {
+      // Downgraded RDV: still eligible for handoff overlay below.
+      const downgraded: QualKey = 'rdv_non_confirme'
+      if (handoffLeadKeys && lk && handoffLeadKeys.has(lk)) {
+        return 'a_passer_a_humain'
+      }
+      return downgraded
+    }
+    return key
+  }
+  // Handoff overlay: a lead flagged for human handoff (and not in a
+  // protected terminal state) shows as À PASSER À L'HUMAIN everywhere.
+  if (handoffLeadKeys && !HANDOFF_PROTECTED.has(key)) {
+    const lk = leadGroupKey(c)
+    if (lk && handoffLeadKeys.has(lk)) return 'a_passer_a_humain'
   }
   return key
 }

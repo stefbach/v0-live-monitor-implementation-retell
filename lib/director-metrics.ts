@@ -113,7 +113,9 @@ export interface QualCount {
 // the card counters, slide-over filtering and per-row badges always
 // agree on which bucket a call belongs to.
 export function computeQualificationCounts(
-  calls: CallLogEnriched[]
+  calls: CallLogEnriched[],
+  confirmedRdvLeadKeys?: Set<string>,
+  handoffLeadKeys?: Set<string>
 ): Record<QualKey, number> {
   const counts: Record<QualKey, number> = {
     rdv_confirme: 0,
@@ -129,9 +131,9 @@ export function computeQualificationCounts(
     ne_pas_rappeler: 0,
     autre: 0,
   }
-  const confirmed = computeConfirmedRdvLeads(calls)
+  const confirmed = confirmedRdvLeadKeys ?? computeConfirmedRdvLeads(calls)
   for (const c of calls) {
-    counts[effectiveQualKey(c, confirmed)]++
+    counts[effectiveQualKey(c, confirmed, handoffLeadKeys)]++
   }
   return counts
 }
@@ -140,10 +142,12 @@ export function computeQualificationCounts(
 // effectiveQualKey() routing.
 export function callsForQualification(
   calls: CallLogEnriched[],
-  key: QualKey
+  key: QualKey,
+  confirmedRdvLeadKeys?: Set<string>,
+  handoffLeadKeys?: Set<string>
 ): CallLogEnriched[] {
-  const confirmed = computeConfirmedRdvLeads(calls)
-  return calls.filter((c) => effectiveQualKey(c, confirmed) === key)
+  const confirmed = confirmedRdvLeadKeys ?? computeConfirmedRdvLeads(calls)
+  return calls.filter((c) => effectiveQualKey(c, confirmed, handoffLeadKeys) === key)
 }
 
 // ─── Phase J1 / J3 / J5 tracking ────────────────────────────────────────────
@@ -260,10 +264,101 @@ export interface HandoffCandidate {
 
 // Difficult leads: eligible but not converted, robot-awareness detected,
 // or several failed attempts without reaching the prospect.
+// Minimum duration (seconds) for a call to qualify a lead as "À PASSER À
+// L'HUMAIN" — below 20s the conversation is too short to understand why
+// a handoff is needed.
+const HANDOFF_MIN_DURATION_S = 20
+
+// Returns the set of leadGroupKey()s flagged for human handoff.
+// Used both by the À PASSER À L'HUMAIN qualif card (via effectiveQualKey
+// overlay) and by the "Dossiers à confier" section — so the two are
+// guaranteed to agree on the same population.
+export function computeHandoffLeadKeys(
+  calls: CallLogEnriched[],
+  leads: Lead[]
+): Set<string> {
+  const leadById = new Map(leads.map((l) => [l.id, l]))
+  const byLead = new Map<string, CallLogEnriched[]>()
+  for (const c of calls) {
+    const k = leadKey(c)
+    if (!k) continue
+    if (!byLead.has(k)) byLead.set(k, [])
+    byLead.get(k)!.push(c)
+  }
+
+  const PROTECTED_QUALS = new Set<QualKey>([
+    'rdv_confirme',
+    'pas_interesse',
+    'faux_numero',
+    'ne_pas_rappeler',
+  ])
+
+  const out = new Set<string>()
+  for (const [k, list] of byLead.entries()) {
+    // Hard filter: at least one call ≥ 20s on this lead.
+    if (!list.some((c) => c.duration >= HANDOFF_MIN_DURATION_S)) continue
+
+    const latest = [...list].sort(
+      (a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+    )[0]
+    const lead = latest.lead
+    const fullLead = leadById.get(lead?.id ?? '') ?? null
+    const qual = qualKeyFromRaw(lead?.qualification)
+
+    // Explicit CRM tag wins — n8n already wrote À PASSER À L'HUMAIN.
+    if (qual === 'a_passer_a_humain') {
+      out.add(k)
+      continue
+    }
+    // Don't override explicit refusals / confirmed RDV.
+    if (PROTECTED_QUALS.has(qual)) continue
+
+    // Signal-based flags:
+    if (list.some((c) => c.analysis?.transferToIsabelle)) {
+      out.add(k)
+      continue
+    }
+    if (list.some((c) => c.analysis?.humanTransferTriggered)) {
+      out.add(k)
+      continue
+    }
+    if (list.some((c) => c.robotAwareness === true)) {
+      out.add(k)
+      continue
+    }
+
+    // Eligible (S2) but the lead is still open.
+    if (lead) {
+      const elig = computeEligibility({
+        bmi: lead.bmi,
+        nhs_wmp_status: fullLead?.nhs_wmp_status ?? null,
+        nhs_wmp_details: fullLead?.nhs_wmp_details ?? null,
+        other_chronic_conditions: fullLead?.other_chronic_conditions ?? null,
+        current_medications: fullLead?.current_medications ?? null,
+        note: fullLead?.note ?? null,
+        allergies: fullLead?.allergies ?? null,
+      })
+      if (elig.eligible) {
+        out.add(k)
+        continue
+      }
+    }
+
+    // ≥3 failed attempts without ever reaching the prospect.
+    const failed = list.filter((c) => !c.answered).length
+    if (failed >= 3) {
+      out.add(k)
+      continue
+    }
+  }
+  return out
+}
+
 export function computeHandoffCandidates(
   calls: CallLogEnriched[],
   leads: Lead[]
 ): HandoffCandidate[] {
+  const handoffKeys = computeHandoffLeadKeys(calls, leads)
   const leadById = new Map(leads.map((l) => [l.id, l]))
   const byLead = new Map<string, CallLogEnriched[]>()
   for (const c of calls) {
@@ -275,6 +370,7 @@ export function computeHandoffCandidates(
 
   const out: HandoffCandidate[] = []
   for (const [k, list] of byLead.entries()) {
+    if (!handoffKeys.has(k)) continue
     const sorted = [...list].sort(
       (a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
     )

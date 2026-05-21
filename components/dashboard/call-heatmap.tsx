@@ -16,6 +16,7 @@ const HOURS = Array.from({ length: 24 }, (_, i) => i)
 interface Props {
   calls: CallLogEnriched[]
   confirmedRdvLeadKeys?: Set<string>
+  handoffLeadKeys?: Set<string>
   onSelectCall?: (call: CallLogEnriched) => void
   isLoading?: boolean
 }
@@ -51,6 +52,7 @@ function cellStyle(
 export function CallHeatmap({
   calls,
   confirmedRdvLeadKeys,
+  handoffLeadKeys,
   onSelectCall,
   isLoading,
 }: Props) {
@@ -257,6 +259,7 @@ export function CallHeatmap({
         title={panel?.title ?? ''}
         calls={panel?.calls ?? []}
         confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+        handoffLeadKeys={handoffLeadKeys}
         onSelectCall={(c) => {
           setPanel(null)
           onSelectCall?.(c)

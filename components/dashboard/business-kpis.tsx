@@ -35,6 +35,7 @@ interface Props {
   allCalls: CallLogEnriched[]
   leads: Lead[]
   confirmedRdvLeadKeys?: Set<string>
+  handoffLeadKeys?: Set<string>
   onSelectCall?: (call: CallLogEnriched) => void
   isLoading?: boolean
 }
@@ -61,6 +62,7 @@ export function BusinessKpis({
   allCalls,
   leads,
   confirmedRdvLeadKeys,
+  handoffLeadKeys,
   onSelectCall,
   isLoading,
 }: Props) {
@@ -280,6 +282,7 @@ export function BusinessKpis({
         title={panel?.title ?? ''}
         calls={panel?.calls ?? []}
         confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+        handoffLeadKeys={handoffLeadKeys}
         onSelectCall={(c) => {
           setPanel(null)
           onSelectCall?.(c)

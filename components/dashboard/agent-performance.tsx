@@ -10,6 +10,7 @@ import type { CallLogEnriched } from '@/lib/types'
 interface Props {
   filteredCalls: CallLogEnriched[]
   confirmedRdvLeadKeys: Set<string>
+  handoffLeadKeys?: Set<string>
   isLoading?: boolean
 }
 

@@ -27,6 +27,7 @@ interface Props {
   showRappelDate?: boolean // surface the lead's rappel_rdv datetime per row
   showSummary?: boolean // surface the call summary text under each row
   confirmedRdvLeadKeys?: Set<string>
+  handoffLeadKeys?: Set<string>
 }
 
 function fmtRappel(iso: string | null | undefined): string | null {
@@ -61,6 +62,7 @@ export function DetailSlideOver({
   showRappelDate,
   showSummary,
   confirmedRdvLeadKeys,
+  handoffLeadKeys,
 }: Props) {
   const confirmed = confirmedRdvLeadKeys ?? new Set<string>()
   return (
@@ -80,7 +82,7 @@ export function DetailSlideOver({
             </p>
           )}
           {calls.slice(0, 200).map((c) => {
-            const q = QUAL_META[effectiveQualKey(c, confirmed)]
+            const q = QUAL_META[effectiveQualKey(c, confirmed, handoffLeadKeys)]
             return (
               <button
                 key={c.id}
