@@ -77,6 +77,7 @@ export function DirectorView({
     calls: CallLogEnriched[]
     raw?: boolean
     rappelDate?: boolean
+    summary?: boolean
   } | null>(null)
   const [handoffPanel, setHandoffPanel] = useState<
     ReturnType<typeof computeHandoffCandidates>[number] | null
@@ -104,9 +105,11 @@ export function DirectorView({
     setPanel({
       title,
       calls: callsForQualification(filteredCalls, key),
-      // The RAPPEL card lists leads with a scheduled callback datetime
-      // (leads_rdv.rappel_rdv) — surface it in the slide-over rows.
+      // The RAPPEL card surfaces leads_rdv.rappel_rdv per row.
       rappelDate: key === 'rappel',
+      // "À passer à l'humain" surfaces the call summary so the operator
+      // knows immediately why the lead was flagged for handoff.
+      summary: key === 'a_passer_a_humain',
     })
 
   if (isLoading) {
@@ -379,6 +382,7 @@ export function DirectorView({
         calls={panel?.calls ?? []}
         showRaw={panel?.raw}
         showRappelDate={panel?.rappelDate}
+        showSummary={panel?.summary}
         confirmedRdvLeadKeys={confirmedRdvLeadKeys}
         onSelectCall={(c) => {
           setPanel(null)

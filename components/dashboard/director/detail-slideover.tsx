@@ -25,6 +25,7 @@ interface Props {
   onSelectCall: (call: CallLogEnriched) => void
   showRaw?: boolean // show raw Retell status instead of mapped qualif badge
   showRappelDate?: boolean // surface the lead's rappel_rdv datetime per row
+  showSummary?: boolean // surface the call summary text under each row
   confirmedRdvLeadKeys?: Set<string>
 }
 
@@ -58,6 +59,7 @@ export function DetailSlideOver({
   onSelectCall,
   showRaw,
   showRappelDate,
+  showSummary,
   confirmedRdvLeadKeys,
 }: Props) {
   const confirmed = confirmedRdvLeadKeys ?? new Set<string>()
@@ -83,8 +85,9 @@ export function DetailSlideOver({
               <button
                 key={c.id}
                 onClick={() => onSelectCall(c)}
-                className="flex items-center justify-between gap-3 rounded-lg border border-border/50 p-3 text-left transition-colors hover:bg-muted/50"
+                className="rounded-lg border border-border/50 p-3 text-left transition-colors hover:bg-muted/50"
               >
+                <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted">
                     <DirectionIcon direction={c.direction} size="md" />
@@ -137,6 +140,17 @@ export function DetailSlideOver({
                     {c.meta?.phase ? ` · ${c.meta.phase}` : ''}
                   </span>
                 </div>
+                </div>
+                {showSummary && c.summary && (
+                  <p className="mt-2 line-clamp-3 rounded bg-muted/30 p-2 text-xs leading-relaxed text-muted-foreground">
+                    {c.summary}
+                  </p>
+                )}
+                {showSummary && !c.summary && (
+                  <p className="mt-2 text-[11px] italic text-muted-foreground">
+                    Pas de résumé d&apos;appel disponible.
+                  </p>
+                )}
               </button>
             )
           })}

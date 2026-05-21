@@ -16,6 +16,7 @@
 export type QualKey =
   | 'rdv_confirme'
   | 'rdv_non_confirme'
+  | 'a_passer_a_humain'
   | 'rappel'
   | 'pas_interesse'
   | 'pas_de_reponse'
@@ -37,6 +38,11 @@ export interface QualMeta {
 const RAW_TO_KEY: Record<string, QualKey> = {
   'RDV MEDECIN': 'rdv_confirme',
   'RDV CONFIRME': 'rdv_confirme',
+  "À PASSER À L'HUMAIN": 'a_passer_a_humain',
+  "A PASSER A L'HUMAIN": 'a_passer_a_humain',
+  'A PASSER A HUMAIN': 'a_passer_a_humain',
+  TRANSFERRED_TO_ISABELLE: 'a_passer_a_humain',
+  HUMAN_HANDOFF: 'a_passer_a_humain',
   CALLBACK_SCHEDULED: 'rappel',
   'FOLLOW UP': 'rappel',
   RAPPEL: 'rappel',
@@ -47,7 +53,6 @@ const RAW_TO_KEY: Record<string, QualKey> = {
   'NOUVEAU DOSSIER': 'nouveau_dossier',
   'NON ELIGIBLE': 'non_eligible',
   'NE PAS RAPPELER': 'ne_pas_rappeler',
-  TRANSFERRED_TO_ISABELLE: 'autre',
 }
 
 export const QUAL_META: Record<QualKey, QualMeta> = {
@@ -57,6 +62,13 @@ export const QUAL_META: Record<QualKey, QualMeta> = {
     badgeClass: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30',
     dotClass: 'bg-emerald-500',
     cardAccent: 'border-l-emerald-500',
+  },
+  a_passer_a_humain: {
+    key: 'a_passer_a_humain',
+    label: "À PASSER À L'HUMAIN",
+    badgeClass: 'bg-sky-500/10 text-sky-500 border-sky-500/30',
+    dotClass: 'bg-sky-500',
+    cardAccent: 'border-l-sky-500',
   },
   rdv_non_confirme: {
     key: 'rdv_non_confirme',
@@ -138,6 +150,7 @@ export const QUAL_META: Record<QualKey, QualMeta> = {
 // computeQualificationCounts in lib/director-metrics.ts.
 export const QUALIFICATION_CARDS: QualKey[] = [
   'rdv_confirme',
+  'a_passer_a_humain',
   'rappel',
   'pas_interesse',
   'pas_de_reponse',

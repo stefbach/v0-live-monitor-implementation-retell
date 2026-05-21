@@ -118,6 +118,7 @@ export function computeQualificationCounts(
   const counts: Record<QualKey, number> = {
     rdv_confirme: 0,
     rdv_non_confirme: 0,
+    a_passer_a_humain: 0,
     rappel: 0,
     pas_interesse: 0,
     pas_de_reponse: 0,
