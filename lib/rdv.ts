@@ -1,7 +1,6 @@
 import type { CallLogEnriched } from './types'
 import { leadGroupKey, agentLevel } from './lead-key'
 import { qualKeyFromRaw, type QualKey } from './qualifications'
-import { computeEligibility } from './eligibility'
 
 // Strict definition of "RDV confirmé", agreed with the user (#1).
 //
@@ -77,60 +76,31 @@ export function computeConfirmedRdvLeads(
   return out
 }
 
-// Single source of truth for the FINAL bucket of any call. Used by:
-//   - card counters (computeQualificationCounts)
-//   - slide-over filtering (callsForQualification)
-//   - per-row badges (CallLogsTable, DetailSlideOver, CallDetailSheet…)
-// so the UI is internally consistent.
+// Final bucket for any call. Used by card counters, slide-over filters
+// and per-row badges so the UI stays internally consistent.
 //
-// Routing rules (in order):
-//   1) RDV CONFIRMÉ → strict criteria of computeConfirmedRdvLeads; else
-//      re-routed to RAPPEL (needs follow-up to actually confirm).
-//   2) NOUVEAU DOSSIER (CRM default) or unmapped → infer from call signal:
-//        - c.answered (real conversation > 15s, valid disconnect) → RAPPEL
-//        - voicemail (c.inVoicemail OR voicemailSuspected)        → REPONDEUR
-//        - otherwise (true no-answer)                             → PAS DE REPONSE
-//   3) NON ELIGIBLE overlay: ONLY when the call was actually answered
-//      AND the lead's BMI is below the S2 threshold. Applies on top of
-//      the "still-open" buckets only (rappel / repondeur / pas_de_reponse),
-//      never overrides explicit refusals (pas_interesse / faux_numero /
-//      ne_pas_rappeler) nor confirmed RDV.
+// Source of truth = leads_rdv.qualification (Supabase). The only piece
+// of Retell-derived logic kept is the strict RDV CONFIRMÉ check (#1):
+// a lead the CRM marks "RDV MEDECIN" but whose calls don't satisfy
+// the criteria of computeConfirmedRdvLeads (consultation_booked /
+// rdv_confirmed ≥60s / handoff to Isabelle ≥60s + reached Victoria) is
+// downgraded to 'rdv_non_confirme' so the RDV CONFIRMÉ card doesn't
+// inflate on short calls.
+//
+// All other cards (RAPPEL, NON ELIGIBLE, NE PAS RAPPELER, REPONDEUR,
+// PAS DE REPONSE, PAS INTERESSE, FAUX NUMERO, NOUVEAU DOSSIER) read
+// leads_rdv.qualification directly. No NOUVEAU DOSSIER inferred
+// routing, no BMI overlay, no callback_scheduled / call_outcome
+// overrides — n8n Agent 2 is now responsible for proper classification
+// in Supabase.
 export function effectiveQualKey(
   c: CallLogEnriched,
   confirmedRdvLeadKeys: Set<string>
 ): QualKey {
-  let key = qualKeyFromRaw(c.lead?.qualification)
-
-  // 1) Strict RDV CONFIRMÉ
+  const key = qualKeyFromRaw(c.lead?.qualification)
   if (key === 'rdv_confirme') {
     const lk = leadGroupKey(c)
-    if (!lk || !confirmedRdvLeadKeys.has(lk)) key = 'rappel'
+    if (!lk || !confirmedRdvLeadKeys.has(lk)) return 'rdv_non_confirme'
   }
-
-  // 2) NOUVEAU DOSSIER / unmapped → re-route by call signal
-  if (key === 'nouveau_dossier' || key === 'autre') {
-    if (c.answered) key = 'rappel'
-    else if (c.inVoicemail || c.voicemailSuspected) key = 'repondeur'
-    else key = 'pas_de_reponse'
-  }
-
-  // 3) NON ELIGIBLE overlay — only if we actually spoke to the person
-  if (
-    c.answered &&
-    c.lead &&
-    (key === 'rappel' || key === 'repondeur' || key === 'pas_de_reponse')
-  ) {
-    const elig = computeEligibility({
-      bmi: c.lead.bmi,
-      nhs_wmp_status: null,
-      nhs_wmp_details: null,
-      other_chronic_conditions: null,
-      current_medications: null,
-      note: null,
-      allergies: null,
-    })
-    if (elig.reason === 'bmi_below') return 'non_eligible'
-  }
-
   return key
 }

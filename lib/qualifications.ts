@@ -45,6 +45,7 @@ const RAW_TO_KEY: Record<string, QualKey> = {
   REPONDEUR: 'repondeur',
   'FAUX NUMERO': 'faux_numero',
   'NOUVEAU DOSSIER': 'nouveau_dossier',
+  'NON ELIGIBLE': 'non_eligible',
   'NE PAS RAPPELER': 'ne_pas_rappeler',
   TRANSFERRED_TO_ISABELLE: 'autre',
 }
