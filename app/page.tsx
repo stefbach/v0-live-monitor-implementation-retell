@@ -3,34 +3,49 @@
 import { useState } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DashboardHeader } from '@/components/dashboard/dashboard-header'
-import { StatsOverview } from '@/components/dashboard/stats-overview'
-import { CallVolumeChart } from '@/components/dashboard/call-volume-chart'
-import { SuccessRateChart } from '@/components/dashboard/success-rate-chart'
-import { DurationDistribution } from '@/components/dashboard/duration-distribution'
-import { PeakHoursHeatmap } from '@/components/dashboard/peak-hours-heatmap'
+import { FilterBar } from '@/components/dashboard/filter-bar'
+import { BusinessKpis } from '@/components/dashboard/business-kpis'
+import { CallHeatmap } from '@/components/dashboard/call-heatmap'
+import { CostAdvanced } from '@/components/dashboard/cost-advanced'
+import { ConversionFunnel } from '@/components/dashboard/conversion-funnel'
+import { QualificationBreakdown } from '@/components/dashboard/qualification-breakdown'
+import { SourceAttribution } from '@/components/dashboard/source-attribution'
+import { AttemptFunnel } from '@/components/dashboard/attempt-funnel'
+import { AgentChain } from '@/components/dashboard/agent-chain'
+import { EligibilityPipeline } from '@/components/dashboard/eligibility-pipeline'
+import { AgentPerformance } from '@/components/dashboard/agent-performance'
+import { InsightsPanel } from '@/components/dashboard/ai-insights/insights-panel'
+import { DirectorView } from '@/components/dashboard/director/director-view'
 import { CallLogsTable } from '@/components/dashboard/call-logs-table'
+import { CallLogsFilters } from '@/components/dashboard/call-logs-filters'
+import { StatsExtras } from '@/components/dashboard/stats/stats-extras'
+import { ReportButton } from '@/components/dashboard/report-button'
 import { CallDetailSheet } from '@/components/dashboard/call-detail-sheet'
-import { LiveMonitor } from '@/components/dashboard/live-monitor'
+import { LiveView } from '@/components/dashboard/live/live-view'
+import { ErrorsView } from '@/components/dashboard/errors/errors-view'
 import { MobileBottomNav } from '@/components/dashboard/mobile-bottom-nav'
-import { useCalls } from '@/lib/hooks/use-calls'
-import type { CallLog } from '@/lib/types'
+import { useDashboardData } from '@/lib/hooks/use-calls'
+import { useT } from '@/lib/hooks/use-t'
+import type { CallLogEnriched } from '@/lib/types'
 
 export default function DashboardPage() {
-  const [activeTab, setActiveTab] = useState('overview')
+  const { t } = useT()
+  const [activeTab, setActiveTab] = useState('directeur')
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null)
   const [isSheetOpen, setIsSheetOpen] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
 
   const {
-    calls,
-    metrics,
-    hourlyData,
-    dailyData,
-    durationBuckets,
-    heatmapData,
+    allCalls,
+    filteredCalls,
+    leads,
+    agentNames,
+    callMetrics,
+    businessMetrics,
+    confirmedRdvLeadKeys,
     isLoading,
     refresh,
-  } = useCalls()
+  } = useDashboardData()
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
@@ -38,7 +53,7 @@ export default function DashboardPage() {
     setIsRefreshing(false)
   }
 
-  const handleCallSelect = (call: CallLog) => {
+  const handleCallSelect = (call: CallLogEnriched) => {
     setSelectedCallId(call.id)
     setIsSheetOpen(true)
   }
@@ -46,93 +61,231 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-background pb-20 md:pb-0">
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        {/* Header */}
         <DashboardHeader onRefresh={handleRefresh} isRefreshing={isRefreshing} />
 
-        {/* Main Content */}
-        <main className="mt-6">
+        <main className="mt-6 space-y-6">
+          {/* Persistent global filter bar — visible on all tabs */}
+          <FilterBar calls={allCalls} agentNames={agentNames} />
+
           {/* Desktop Tabs */}
-          <Tabs
-            value={activeTab}
-            onValueChange={setActiveTab}
-            className="hidden md:block"
-          >
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="hidden md:block">
             <TabsList>
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="calls">Call Logs</TabsTrigger>
+              <TabsTrigger value="directeur">🏠 {t('tab.directeur')}</TabsTrigger>
+              <TabsTrigger value="stats">📊 {t('tab.stats')}</TabsTrigger>
+              <TabsTrigger value="calls">📋 {t('tab.calls')}</TabsTrigger>
               <TabsTrigger value="live" className="gap-2">
-                Live Monitor
+                🔴 {t('tab.live')}
                 <span className="relative flex h-2 w-2">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
                 </span>
               </TabsTrigger>
+              <TabsTrigger value="erreurs">⚠️ {t('tab.erreurs')}</TabsTrigger>
+              <TabsTrigger value="insights" className="gap-1.5">
+                <span className="text-violet-400">✨</span> {t('tab.insights')}
+              </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="overview" className="mt-6 space-y-6">
-              {/* Stats Cards */}
-              <StatsOverview metrics={metrics} isLoading={isLoading} />
-
-              {/* Charts Grid */}
-              <div className="grid gap-6 lg:grid-cols-2">
-                <CallVolumeChart data={hourlyData} isLoading={isLoading} />
-                <SuccessRateChart data={dailyData} isLoading={isLoading} />
-              </div>
-
-              <div className="grid gap-6 lg:grid-cols-2">
-                <DurationDistribution data={durationBuckets} isLoading={isLoading} />
-                <PeakHoursHeatmap data={heatmapData} isLoading={isLoading} />
-              </div>
+            <TabsContent value="directeur" className="mt-6">
+              <DirectorView
+                filteredCalls={filteredCalls}
+                allCalls={allCalls}
+                leads={leads}
+                isLoading={isLoading}
+                confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+                onSelectCall={handleCallSelect}
+              />
             </TabsContent>
 
-            <TabsContent value="calls" className="mt-6">
-              <CallLogsTable
-                calls={calls}
+            <TabsContent value="erreurs" className="mt-6">
+              <ErrorsView allCalls={allCalls} leads={leads} />
+            </TabsContent>
+
+            <TabsContent value="stats" className="mt-6 space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">📊 Statistiques</h2>
+                <ReportButton allCalls={allCalls} leads={leads} />
+              </div>
+              <BusinessKpis
+                metrics={callMetrics}
+                business={businessMetrics}
+                filteredCalls={filteredCalls}
+                allCalls={allCalls}
+                leads={leads}
+                confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+                onSelectCall={handleCallSelect}
                 isLoading={isLoading}
+              />
+
+              <CallHeatmap
+                calls={filteredCalls}
+                confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+                onSelectCall={handleCallSelect}
+                isLoading={isLoading}
+              />
+
+              <CostAdvanced
+                allCalls={allCalls}
+                filteredCalls={filteredCalls}
+                isLoading={isLoading}
+              />
+
+              <div className="grid gap-6 lg:grid-cols-3">
+                <ConversionFunnel
+                  funnel={businessMetrics?.funnel ?? null}
+                  isLoading={isLoading}
+                />
+                <QualificationBreakdown
+                  data={businessMetrics?.qualifications ?? []}
+                  isLoading={isLoading}
+                />
+                <SourceAttribution
+                  data={businessMetrics?.sources ?? []}
+                  isLoading={isLoading}
+                />
+              </div>
+
+              <div className="grid gap-6 lg:grid-cols-2">
+                <AttemptFunnel calls={filteredCalls} isLoading={isLoading} />
+                <AgentChain
+                  calls={filteredCalls}
+                  agentNames={agentNames}
+                  isLoading={isLoading}
+                />
+              </div>
+
+              <EligibilityPipeline leads={leads} isLoading={isLoading} />
+
+              <AgentPerformance
+                filteredCalls={filteredCalls}
+                confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+                isLoading={isLoading}
+              />
+
+              <StatsExtras
+                allCalls={allCalls}
+                filteredCalls={filteredCalls}
+                isLoading={isLoading}
+              />
+            </TabsContent>
+
+            <TabsContent value="insights" className="mt-6">
+              <InsightsPanel filteredCalls={filteredCalls} />
+            </TabsContent>
+
+            <TabsContent value="calls" className="mt-6 space-y-4">
+              <CallLogsFilters />
+              <CallLogsTable
+                calls={filteredCalls}
+                isLoading={isLoading}
+                confirmedRdvLeadKeys={confirmedRdvLeadKeys}
                 onCallSelect={handleCallSelect}
               />
             </TabsContent>
 
             <TabsContent value="live" className="mt-6">
-              <LiveMonitor />
+              <LiveView allCalls={allCalls} />
             </TabsContent>
           </Tabs>
 
           {/* Mobile Content */}
           <div className="md:hidden space-y-6">
-            {activeTab === 'overview' && (
-              <>
-                <StatsOverview metrics={metrics} isLoading={isLoading} />
-                <div className="space-y-6">
-                  <CallVolumeChart data={hourlyData} isLoading={isLoading} />
-                  <SuccessRateChart data={dailyData} isLoading={isLoading} />
-                  <DurationDistribution data={durationBuckets} isLoading={isLoading} />
-                  <PeakHoursHeatmap data={heatmapData} isLoading={isLoading} />
-                </div>
-              </>
-            )}
-
-            {activeTab === 'calls' && (
-              <CallLogsTable
-                calls={calls}
+            {activeTab === 'directeur' && (
+              <DirectorView
+                filteredCalls={filteredCalls}
+                allCalls={allCalls}
+                leads={leads}
                 isLoading={isLoading}
-                onCallSelect={handleCallSelect}
+                confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+                onSelectCall={handleCallSelect}
               />
             )}
 
-            {activeTab === 'live' && <LiveMonitor />}
+            {activeTab === 'erreurs' && <ErrorsView allCalls={allCalls} leads={leads} />}
+
+            {activeTab === 'stats' && (
+              <>
+                <BusinessKpis
+                  metrics={callMetrics}
+                  business={businessMetrics}
+                  filteredCalls={filteredCalls}
+                  allCalls={allCalls}
+                  leads={leads}
+                  confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+                  onSelectCall={handleCallSelect}
+                  isLoading={isLoading}
+                />
+                <CallHeatmap
+                calls={filteredCalls}
+                confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+                onSelectCall={handleCallSelect}
+                isLoading={isLoading}
+              />
+                <CostAdvanced
+                  allCalls={allCalls}
+                  filteredCalls={filteredCalls}
+                  isLoading={isLoading}
+                />
+                <ConversionFunnel
+                  funnel={businessMetrics?.funnel ?? null}
+                  isLoading={isLoading}
+                />
+                <QualificationBreakdown
+                  data={businessMetrics?.qualifications ?? []}
+                  isLoading={isLoading}
+                />
+                <SourceAttribution
+                  data={businessMetrics?.sources ?? []}
+                  isLoading={isLoading}
+                />
+                <AttemptFunnel calls={filteredCalls} isLoading={isLoading} />
+                <AgentChain
+                  calls={filteredCalls}
+                  agentNames={agentNames}
+                  isLoading={isLoading}
+                />
+                <EligibilityPipeline leads={leads} isLoading={isLoading} />
+                <AgentPerformance
+                  filteredCalls={filteredCalls}
+                  confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+                  isLoading={isLoading}
+                />
+                <StatsExtras
+                  allCalls={allCalls}
+                  filteredCalls={filteredCalls}
+                  isLoading={isLoading}
+                />
+              </>
+            )}
+
+            {activeTab === 'insights' && <InsightsPanel filteredCalls={filteredCalls} />}
+
+            {activeTab === 'calls' && (
+              <div className="space-y-4">
+                <CallLogsFilters />
+                <CallLogsTable
+                  calls={filteredCalls}
+                  isLoading={isLoading}
+                  confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+                  onCallSelect={handleCallSelect}
+                />
+              </div>
+            )}
+
+            {activeTab === 'live' && <LiveView allCalls={allCalls} />}
           </div>
         </main>
       </div>
 
-      {/* Mobile Bottom Navigation */}
       <MobileBottomNav activeTab={activeTab} onTabChange={setActiveTab} />
 
-      {/* Call Detail Sheet */}
       <CallDetailSheet
         callId={selectedCallId}
         open={isSheetOpen}
         onOpenChange={setIsSheetOpen}
+        allCalls={allCalls}
+        confirmedRdvLeadKeys={confirmedRdvLeadKeys}
+        onSelectCall={handleCallSelect}
       />
     </div>
   )

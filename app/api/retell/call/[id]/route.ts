@@ -1,11 +1,19 @@
 import { NextResponse } from 'next/server'
-import type { CallLog, ApiResponse } from '@/lib/types'
+import type { CallLogEnriched, ApiResponse, Lead } from '@/lib/types'
 import { getMockCallById } from '@/lib/mock-data'
+import { getAgentNameMap } from '@/lib/agents'
+import { getSupabaseServer, supabaseConfigured } from '@/lib/supabase'
+import { normalizePhone, pickCounterpartyNumber } from '@/lib/phone'
+import { getUKParts, getCreneau } from '@/lib/timezone'
+import { detectRobotAwareness, detectVoicemailSuspected } from '@/lib/detection'
+import type { CallMetadataInfo, CallCustomAnalysis } from '@/lib/types'
+
+export const dynamic = 'force-dynamic'
 
 export async function GET(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ id: string }> }
-): Promise<NextResponse<ApiResponse<CallLog | null>>> {
+): Promise<NextResponse<ApiResponse<(CallLogEnriched & { fullLead?: Lead | null }) | null>>> {
   const { id } = await params
   const apiKeyConfigured = !!process.env.RETELL_API_KEY
   const useMockData = process.env.USE_MOCK_DATA === 'true' || !apiKeyConfigured
@@ -14,76 +22,296 @@ export async function GET(
     const call = getMockCallById(id)
     if (!call) {
       return NextResponse.json(
-        {
-          data: null,
-          error: 'Call not found',
-          timestamp: new Date().toISOString(),
-        },
+        { data: null, error: 'Call not found', timestamp: new Date().toISOString() },
         { status: 404 }
       )
     }
+    const startMs = new Date(call.startTime).getTime()
+    const d = Number.isFinite(startMs) ? new Date(startMs) : new Date(0)
     return NextResponse.json({
-      data: call,
+      data: {
+        ...call,
+        cost: null,
+        lead: null,
+        fullLead: null,
+        disconnectionReason: null,
+        attemptNumber: 1,
+        answered: call.duration >= 15,
+        hourOfDay: getUKParts(d)?.hour ?? 0,
+        dayOfWeek: getUKParts(d)?.dayOfWeek ?? 0,
+        creneau: getCreneau(getUKParts(d)?.hour ?? -1, getUKParts(d)?.minute ?? 0),
+        meta: null,
+        analysis: null,
+        inVoicemail: null,
+        voicemailSuspected: false,
+        robotAwareness: null,
+      },
       timestamp: new Date().toISOString(),
     })
   }
 
   try {
-    const response = await fetch(`https://api.retellai.com/v2/get-call/${id}`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-    })
+    const [response, agentNames] = await Promise.all([
+      fetch(`https://api.retellai.com/v2/get-call/${id}`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+      }),
+      getAgentNameMap(),
+    ])
 
     if (!response.ok) {
       if (response.status === 404) {
         return NextResponse.json(
-          {
-            data: null,
-            error: 'Call not found',
-            timestamp: new Date().toISOString(),
-          },
+          { data: null, error: 'Call not found', timestamp: new Date().toISOString() },
           { status: 404 }
         )
       }
       throw new Error(`Retell API error: ${response.status}`)
     }
 
-    const data = await response.json()
+    const data = (await response.json()) as Record<string, unknown>
+    const startTs = data.start_timestamp as number | string | undefined
+    const endTs = data.end_timestamp as number | string | undefined
+    const startMs = startTs != null ? new Date(startTs).getTime() : NaN
+    const endMs = endTs != null ? new Date(endTs).getTime() : NaN
+    const direction = data.direction === 'inbound' ? 'inbound' : 'outbound'
+    const fromNumber = (data.from_number as string) || ''
+    const toNumber = (data.to_number as string) || ''
+    const agentId = (data.agent_id as string) || ''
+    const costObj = data.call_cost as { combined_cost?: number } | undefined
+    const cost =
+      typeof costObj?.combined_cost === 'number' ? costObj.combined_cost : null
+    const disconnectionReason = (data.disconnection_reason as string) || null
+    const duration =
+      Number.isFinite(endMs) && Number.isFinite(startMs)
+        ? Math.floor((endMs - startMs) / 1000)
+        : 0
+    const NO_ANSWER = new Set([
+      'dial_no_answer',
+      'voicemail',
+      'dial_busy',
+      'dial_failed',
+      'no_valid_payment',
+      'inactivity',
+    ])
+    const answered =
+      duration >= 15 && !(disconnectionReason && NO_ANSWER.has(disconnectionReason))
 
-    // Transform Retell API response to our CallLog type
-    const call: CallLog = {
-      id: data.call_id,
-      callId: data.call_id,
-      agentId: data.agent_id,
-      agentName: data.agent_name || 'Unknown Agent',
-      status: mapRetellStatus(data.call_status),
-      direction: data.direction === 'inbound' ? 'inbound' : 'outbound',
-      duration: data.end_timestamp
-        ? Math.floor(
-            (new Date(data.end_timestamp).getTime() -
-              new Date(data.start_timestamp).getTime()) /
-              1000
-          )
-        : 0,
-      startTime: data.start_timestamp,
-      endTime: data.end_timestamp || null,
-      fromNumber: data.from_number || '',
-      toNumber: data.to_number || '',
-      transcript: data.transcript?.map(
-        (t: { role: string; content: string; timestamp?: number }, i: number) => ({
-          id: `seg-${i}`,
-          speaker: t.role === 'agent' ? 'agent' : 'user',
-          text: t.content,
-          startTime: t.timestamp || i * 5,
-          endTime: (t.timestamp || i * 5) + 5,
-        })
+    // Lookup the lead via phone
+    const counterparty = pickCounterpartyNumber(direction, fromNumber, toNumber)
+    const phone = normalizePhone(counterparty)
+    let fullLead: Lead | null = null
+    if (phone && supabaseConfigured()) {
+      const supabase = getSupabaseServer()!
+      const { data: leadRows } = await supabase
+        .from('leads_rdv')
+        .select('*')
+        .or(`numero_telephone.eq.${phone},numero_telephone.eq.${counterparty}`)
+        .limit(1)
+      if (leadRows && leadRows[0]) {
+        const r = leadRows[0] as Record<string, unknown>
+        fullLead = {
+          id: r.id as string,
+          nom: (r.nom as string) ?? null,
+          email: (r.email as string) ?? null,
+          numero_telephone: (r.numero_telephone as string) ?? null,
+          poids: toNum(r.poids),
+          taille: toNum(r.taille),
+          bmi: toNum(r.bmi),
+          source_lead: (r.source_lead as string) ?? null,
+          form_facebook: (r.form_facebook as string) ?? null,
+          agent: (r.agent as string) ?? null,
+          date_rdv: (r.date_rdv as string) ?? null,
+          date_creation: (r.date_creation as string) ?? null,
+          qualification: (r.qualification as string) ?? null,
+          note: (r.note as string) ?? null,
+          rappel_rdv: (r.rappel_rdv as string) ?? null,
+          call_count: toNum(r.call_count),
+          last_qualification_update: (r.last_qualification_update as string) ?? null,
+          first_mail: (r['1st_mail'] as string) ?? null,
+          second_mail: (r['2nd_mail'] as string) ?? null,
+          allergies: (r.allergies as string) ?? null,
+          anesthesia_allergies: (r.anesthesia_allergies as string) ?? null,
+          current_medications: (r.current_medications as string) ?? null,
+          past_surgeries: (r.past_surgeries as string) ?? null,
+          nhs_wmp_status: (r.nhs_wmp_status as string) ?? null,
+          nhs_wmp_details: (r.nhs_wmp_details as string) ?? null,
+          other_chronic_conditions: (r.other_chronic_conditions as string) ?? null,
+          patient_dob: (r.patient_dob as string) ?? null,
+          email_sent: (r.email_sent as boolean) ?? null,
+          last_call_datetime: (r.last_call_datetime as string) ?? null,
+          call_1_note: (r.call_1_note as string) ?? null,
+          call_2_note: (r.call_2_note as string) ?? null,
+          call_3_note: (r.call_3_note as string) ?? null,
+        }
+      }
+    }
+
+    // Enrich-on-click: definitive robot-awareness from the FULL transcript
+    const fullTranscriptText =
+      typeof data.transcript === 'string' ? (data.transcript as string) : ''
+    const ca = data.call_analysis as Record<string, unknown> | undefined
+    const cad = ca?.custom_analysis_data as Record<string, unknown> | undefined
+    const inVoicemail =
+      ca && typeof ca.in_voicemail === 'boolean' ? (ca.in_voicemail as boolean) : null
+    const bool = (v: unknown): boolean | null => (typeof v === 'boolean' ? v : null)
+    const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null)
+    const m = data.metadata as Record<string, unknown> | undefined
+    const num = (v: unknown): number | null =>
+      typeof v === 'number' ? v : v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : null
+    const metaInfo: CallMetadataInfo | null =
+      m && typeof m === 'object'
+        ? {
+            leadId: (m.lead_id as string) ?? null,
+            phase: (m.phase as string) ?? null,
+            today: (m.today as string) ?? null,
+            j1Attempts: num(m.j1_attempts),
+            j3Attempts: num(m.j3_attempts),
+            j5Attempts: num(m.j5_attempts),
+          }
+        : null
+    const analysisInfo: CallCustomAnalysis | null =
+      cad && typeof cad === 'object'
+        ? {
+            callOutcome: str(cad.call_outcome),
+            interestLevel: str(cad.interest_level),
+            objectionsRaised: str(cad.objections_raised),
+            callbackScheduled: bool(cad.callback_scheduled),
+            callbackDatetime: str(cad.callback_datetime),
+            transferToIsabelle: bool(cad.transfer_to_isabelle),
+            humanTransferTriggered: bool(cad.human_transfer_triggered),
+            availability: str(cad.availability),
+            mainConcern: str(cad.main_concern),
+            emotionalState: str(cad.emotional_state),
+          }
+        : null
+    const ukParts = getUKParts(Number.isFinite(startMs) ? startMs : undefined)
+
+    const transcriptArr = (data.transcript_object as unknown[]) || (data.transcript as unknown[])
+    const call: CallLogEnriched & { fullLead?: Lead | null } = {
+      id: (data.call_id as string) || id,
+      callId: (data.call_id as string) || id,
+      agentId,
+      agentName: agentNames[agentId] || (data.agent_name as string) || 'Unknown Agent',
+      status: mapRetellStatus(data.call_status as string),
+      direction,
+      duration,
+      startTime: Number.isFinite(startMs) ? new Date(startMs).toISOString() : '',
+      endTime: Number.isFinite(endMs) ? new Date(endMs).toISOString() : null,
+      fromNumber,
+      toNumber,
+      userName: fullLead?.nom ?? undefined,
+      recordingUrl: (data.recording_url as string) || undefined,
+      summary:
+        ((data.call_analysis as { call_summary?: string })?.call_summary as string) ||
+        (data.call_summary as string) ||
+        undefined,
+      sentiment: ((data.call_analysis as { user_sentiment?: string })?.user_sentiment as
+        | 'positive'
+        | 'neutral'
+        | 'negative'
+        | undefined) ?? undefined,
+      cost,
+      disconnectionReason,
+      attemptNumber: 1,
+      answered,
+      hourOfDay: ukParts?.hour ?? 0,
+      dayOfWeek: ukParts?.dayOfWeek ?? 0,
+      creneau: getCreneau(ukParts?.hour ?? -1, ukParts?.minute ?? 0),
+      meta: metaInfo,
+      analysis: analysisInfo,
+      inVoicemail,
+      voicemailSuspected: detectVoicemailSuspected(
+        inVoicemail,
+        duration,
+        disconnectionReason
       ),
-      recordingUrl: data.recording_url,
-      summary: data.call_analysis?.call_summary,
-      sentiment: data.call_analysis?.user_sentiment,
+      robotAwareness: (() => {
+        const flag = detectRobotAwareness(
+          fullTranscriptText ||
+            ((data.call_analysis as { call_summary?: string })?.call_summary as string) ||
+            ''
+        )
+        // Persist robot-awareness & voicemail-suspected flags in
+        // dashboard_errors so the counters survive across page reloads
+        // and aggregate across all analysed calls (#10). Fire-and-forget.
+        if (supabaseConfigured()) {
+          const supabase = getSupabaseServer()!
+          const callId = (data.call_id as string) || id
+          const leadId = (metaInfo?.leadId as string) || null
+          const vm = detectVoicemailSuspected(
+            inVoicemail,
+            duration,
+            disconnectionReason
+          )
+          if (flag) {
+            void supabase
+              .from('dashboard_errors')
+              .upsert(
+                {
+                  error_type: 'robot_awareness',
+                  call_id: callId,
+                  lead_id: leadId,
+                  detail: 'Détecté dans la transcription complète',
+                  status: 'open',
+                  created_at: new Date().toISOString(),
+                },
+                { onConflict: 'error_type,call_id' }
+              )
+          }
+          if (vm) {
+            void supabase
+              .from('dashboard_errors')
+              .upsert(
+                {
+                  error_type: 'voicemail_suspected',
+                  call_id: callId,
+                  lead_id: leadId,
+                  detail: `Durée ${duration}s, disconnect ${disconnectionReason ?? '—'}`,
+                  status: 'open',
+                  created_at: new Date().toISOString(),
+                },
+                { onConflict: 'error_type,call_id' }
+              )
+          }
+        }
+        return flag
+      })(),
+      lead: fullLead
+        ? {
+            id: fullLead.id,
+            nom: fullLead.nom,
+            email: fullLead.email,
+            numero_telephone: fullLead.numero_telephone,
+            bmi: fullLead.bmi,
+            poids: fullLead.poids,
+            taille: fullLead.taille,
+            patient_dob: fullLead.patient_dob,
+            qualification: fullLead.qualification,
+            source_lead: fullLead.source_lead,
+            call_count: fullLead.call_count,
+            date_rdv: fullLead.date_rdv,
+            rappel_rdv: fullLead.rappel_rdv,
+            last_call_datetime: fullLead.last_call_datetime,
+          }
+        : null,
+      fullLead,
+      transcript: Array.isArray(transcriptArr)
+        ? transcriptArr.map((t, i) => {
+            const o = (t as Record<string, unknown>) || {}
+            const role = (o.role as string) === 'user' ? 'user' : 'agent'
+            return {
+              id: `seg-${i}`,
+              speaker: role as 'agent' | 'user',
+              text: (o.content as string) || '',
+              startTime: typeof o.start === 'number' ? o.start : (o.timestamp as number) || i * 5,
+              endTime: typeof o.end === 'number' ? o.end : ((o.timestamp as number) || i * 5) + 5,
+            }
+          })
+        : undefined,
     }
 
     return NextResponse.json({
@@ -100,6 +328,12 @@ export async function GET(
       { status: 500 }
     )
   }
+}
+
+function toNum(v: unknown): number | null {
+  if (v == null || v === '') return null
+  const n = typeof v === 'number' ? v : Number(v)
+  return Number.isFinite(n) ? n : null
 }
 
 function mapRetellStatus(
