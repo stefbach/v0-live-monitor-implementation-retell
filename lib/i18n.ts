@@ -90,7 +90,8 @@ const fr: Dict = {
   'reclassify.desc':
     "Claude relit la transcription, propose la qualification correcte et te laisse l'appliquer dans Supabase",
   'reclassify.scope':
-    '{n} derniers appels analysés (limite par sécurité — affine le filtre pour cibler).',
+    '{n} appels dans la période filtrée seront ré-analysés par lots de 30.',
+  'reclassify.applyAll': 'Tout appliquer ({n})',
   'reclassify.analyze': 'Analyser les appels',
   'reclassify.analyzing': 'Analyse en cours…',
   'reclassify.diffs': 'écart(s) entre Supabase et la suggestion Claude',
@@ -321,7 +322,8 @@ const en: Dict = {
   'reclassify.desc':
     'Claude reads the transcript, suggests the correct qualification and lets you apply it back to Supabase',
   'reclassify.scope':
-    '{n} most recent calls analysed (capped — narrow the filter to target specific calls).',
+    '{n} calls in the filtered period will be re-analysed in batches of 30.',
+  'reclassify.applyAll': 'Apply all ({n})',
   'reclassify.analyze': 'Analyze calls',
   'reclassify.analyzing': 'Analyzing…',
   'reclassify.diffs': 'gap(s) between Supabase and Claude suggestion',

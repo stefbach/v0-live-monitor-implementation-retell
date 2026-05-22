@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Loader2, Sparkles, Check, AlertTriangle } from 'lucide-react'
+import { Loader2, Sparkles, Check, AlertTriangle, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -34,43 +34,67 @@ const SUGGESTION_TO_RAW: Record<string, string> = {
   'NE PAS RAPPELER': 'NE PAS RAPPELER',
 }
 
+const BATCH_SIZE = 30
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = []
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
+  return out
+}
+
 export function ReclassifyPanel({ filteredCalls, onRefresh }: Props) {
   const { t } = useT()
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [progress, setProgress] = useState<{ done: number; total: number }>({
+    done: 0,
+    total: 0,
+  })
   const [error, setError] = useState<string | null>(null)
   const [results, setResults] = useState<ReclassifyResult[]>([])
   const [busyApplyId, setBusyApplyId] = useState<string | null>(null)
+  const [applyingAll, setApplyingAll] = useState<{ done: number; total: number } | null>(
+    null
+  )
   const [applied, setApplied] = useState<Record<string, string>>({})
 
-  // Take the most recent 30 calls in the filtered scope
-  const sample = useMemo(
+  // Analyze every call in the filtered scope, most recent first.
+  const allCallIds = useMemo(
     () =>
       [...filteredCalls]
         .sort(
           (a, b) =>
             new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
         )
-        .slice(0, 30),
+        .map((c) => c.callId),
     [filteredCalls]
   )
 
   const run = async () => {
     setIsAnalyzing(true)
     setError(null)
+    setResults([])
+    setApplied({})
+    const batches = chunk(allCallIds, BATCH_SIZE)
+    setProgress({ done: 0, total: allCallIds.length })
     try {
-      const res = await fetch('/api/reclassify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ callIds: sample.map((c) => c.callId) }),
-      })
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as {
-          error?: string
-        } | null
-        throw new Error(body?.error ?? `Erreur ${res.status}`)
+      const accumulated: ReclassifyResult[] = []
+      for (const batch of batches) {
+        const res = await fetch('/api/reclassify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ callIds: batch }),
+        })
+        if (!res.ok) {
+          const body = (await res.json().catch(() => null)) as {
+            error?: string
+          } | null
+          throw new Error(body?.error ?? `Erreur ${res.status}`)
+        }
+        const json = (await res.json()) as { data: ReclassifyResult[] }
+        accumulated.push(...json.data)
+        setResults([...accumulated])
+        setProgress({ done: accumulated.length, total: allCallIds.length })
       }
-      const json = (await res.json()) as { data: ReclassifyResult[] }
-      setResults(json.data)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erreur inconnue')
     } finally {
@@ -113,6 +137,41 @@ export function ReclassifyPanel({ filteredCalls, onRefresh }: Props) {
     )
   }, [results])
 
+  const pendingDiffs = useMemo(
+    () => diffs.filter((r) => r.leadId && !applied[r.callId]),
+    [diffs, applied]
+  )
+
+  const applyAll = async () => {
+    if (pendingDiffs.length === 0) return
+    setError(null)
+    setApplyingAll({ done: 0, total: pendingDiffs.length })
+    let done = 0
+    for (const r of pendingDiffs) {
+      if (!r.leadId) continue
+      try {
+        const raw = SUGGESTION_TO_RAW[r.claudeSuggestion] ?? r.claudeSuggestion
+        const res = await fetch(
+          `/api/leads/${encodeURIComponent(r.leadId)}/qualification`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ qualification: raw }),
+          }
+        )
+        if (res.ok) {
+          setApplied((m) => ({ ...m, [r.callId]: r.claudeSuggestion }))
+        }
+      } catch {
+        // soft-fail; keep going
+      }
+      done++
+      setApplyingAll({ done, total: pendingDiffs.length })
+    }
+    setApplyingAll(null)
+    await onRefresh()
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -124,23 +183,69 @@ export function ReclassifyPanel({ filteredCalls, onRefresh }: Props) {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground">
-            {t('reclassify.scope').replace('{n}', String(sample.length))}
-          </p>
-          <Button onClick={run} disabled={isAnalyzing || sample.length === 0}>
-            {isAnalyzing ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {t('reclassify.analyzing')}
-              </>
-            ) : (
-              <>
-                <Sparkles className="mr-2 h-4 w-4" />
-                {t('reclassify.analyze')}
-              </>
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">
+              {t('reclassify.scope').replace(
+                '{n}',
+                allCallIds.length.toLocaleString()
+              )}
+            </p>
+            {isAnalyzing && progress.total > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {progress.done.toLocaleString()} / {progress.total.toLocaleString()}{' '}
+                ({Math.round((progress.done / progress.total) * 100)}%)
+              </p>
             )}
-          </Button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={run} disabled={isAnalyzing || allCallIds.length === 0}>
+              {isAnalyzing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {t('reclassify.analyzing')}
+                </>
+              ) : (
+                <>
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  {t('reclassify.analyze')}
+                </>
+              )}
+            </Button>
+            {pendingDiffs.length > 0 && !isAnalyzing && (
+              <Button
+                onClick={applyAll}
+                disabled={!!applyingAll}
+                variant="default"
+                className="bg-emerald-600 hover:bg-emerald-500"
+              >
+                {applyingAll ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {applyingAll.done} / {applyingAll.total}
+                  </>
+                ) : (
+                  <>
+                    <Zap className="mr-2 h-4 w-4" />
+                    {t('reclassify.applyAll').replace(
+                      '{n}',
+                      pendingDiffs.length.toLocaleString()
+                    )}
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
         </div>
+
+        {/* Progress bar for analysis */}
+        {isAnalyzing && progress.total > 0 && (
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full bg-cyan-500 transition-[width] duration-300"
+              style={{ width: `${(progress.done / progress.total) * 100}%` }}
+            />
+          </div>
+        )}
 
         {error && (
           <div className="flex items-center gap-2 rounded-md border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-500">
@@ -216,7 +321,7 @@ export function ReclassifyPanel({ filteredCalls, onRefresh }: Props) {
                             <Button
                               size="sm"
                               variant="outline"
-                              disabled={busyApplyId === r.callId}
+                              disabled={busyApplyId === r.callId || !!applyingAll}
                               onClick={() => apply(r)}
                             >
                               {busyApplyId === r.callId && (

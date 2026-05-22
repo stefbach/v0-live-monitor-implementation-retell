@@ -128,76 +128,91 @@ export async function POST(request: Request) {
   }
 
   const client = getAnthropic()!
-  const results: ReclassifyResult[] = []
 
-  for (const callId of callIds) {
-    const detail = await fetchCallDetail(callId)
-    if (!detail) {
-      results.push({
-        callId,
-        retellOutcome: null,
-        supabaseQualification: null,
-        claudeSuggestion: 'PAS DE REPONSE',
-        leadId: null,
-      })
-      continue
-    }
-    const transcript =
-      detail.transcript ??
-      (Array.isArray(detail.transcript_object)
-        ? detail.transcript_object
-            .map((t) => `${t.role ?? '?'}: ${t.content ?? ''}`)
-            .join('\n')
-        : '')
-    const durationSeconds = Math.round((detail.duration_ms ?? 0) / 1000)
-    const retellOutcome =
-      detail.call_analysis?.custom_analysis_data?.call_outcome ?? null
-    const leadId = detail.metadata?.lead_id ?? null
-    const supabaseQual = leadId ? await fetchSupabaseQualForLead(leadId) : null
+  // Run all calls in parallel — Vercel's 60s budget on a single function
+  // is tight when we do 30× sequential round-trips (Retell + Supabase +
+  // Claude). With prompt caching, parallel Claude calls return in ~2-3s.
+  const settled = await Promise.allSettled(
+    callIds.map(async (callId): Promise<ReclassifyResult> => {
+      const detail = await fetchCallDetail(callId)
+      if (!detail) {
+        return {
+          callId,
+          retellOutcome: null,
+          supabaseQualification: null,
+          claudeSuggestion: 'PAS DE REPONSE',
+          leadId: null,
+        }
+      }
+      const transcript =
+        detail.transcript ??
+        (Array.isArray(detail.transcript_object)
+          ? detail.transcript_object
+              .map((t) => `${t.role ?? '?'}: ${t.content ?? ''}`)
+              .join('\n')
+          : '')
+      const durationSeconds = Math.round((detail.duration_ms ?? 0) / 1000)
+      const retellOutcome =
+        detail.call_analysis?.custom_analysis_data?.call_outcome ?? null
+      const leadId = detail.metadata?.lead_id ?? null
+      const supabaseQual = leadId ? await fetchSupabaseQualForLead(leadId) : null
 
-    const userText = [
-      `Durée : ${durationSeconds}s`,
-      `Retell call_outcome : ${retellOutcome ?? 'n/a'}`,
-      `Supabase qualification actuelle : ${supabaseQual ?? 'n/a'}`,
-      '',
-      'Transcription :',
-      transcript ? transcript.slice(0, 8000) : '(transcription indisponible)',
-    ].join('\n')
+      const userText = [
+        `Durée : ${durationSeconds}s`,
+        `Retell call_outcome : ${retellOutcome ?? 'n/a'}`,
+        `Supabase qualification actuelle : ${supabaseQual ?? 'n/a'}`,
+        '',
+        'Transcription :',
+        transcript ? transcript.slice(0, 8000) : '(transcription indisponible)',
+      ].join('\n')
 
-    try {
-      const res = await client.messages.create({
-        model: ANTHROPIC_MODEL,
-        max_tokens: 32,
-        system: [
-          {
-            type: 'text',
-            text: SYSTEM_PROMPT,
-            cache_control: { type: 'ephemeral' },
-          },
-        ],
-        messages: [{ role: 'user', content: userText }],
-      })
-      const textBlock = res.content.find((b) => b.type === 'text')
-      const raw =
-        textBlock && textBlock.type === 'text' ? textBlock.text : ''
-      results.push({
-        callId,
-        retellOutcome,
-        supabaseQualification: supabaseQual,
-        claudeSuggestion: pickLabel(raw),
-        leadId,
-      })
-    } catch (err) {
-      console.error('Claude reclassify failed', callId, err)
-      results.push({
-        callId,
-        retellOutcome,
-        supabaseQualification: supabaseQual,
-        claudeSuggestion: 'PAS DE REPONSE',
-        leadId,
-      })
-    }
-  }
+      try {
+        const res = await client.messages.create({
+          model: ANTHROPIC_MODEL,
+          max_tokens: 32,
+          system: [
+            {
+              type: 'text',
+              text: SYSTEM_PROMPT,
+              cache_control: { type: 'ephemeral' },
+            },
+          ],
+          messages: [{ role: 'user', content: userText }],
+        })
+        const textBlock = res.content.find((b) => b.type === 'text')
+        const raw =
+          textBlock && textBlock.type === 'text' ? textBlock.text : ''
+        return {
+          callId,
+          retellOutcome,
+          supabaseQualification: supabaseQual,
+          claudeSuggestion: pickLabel(raw),
+          leadId,
+        }
+      } catch (err) {
+        console.error('Claude reclassify failed', callId, err)
+        return {
+          callId,
+          retellOutcome,
+          supabaseQualification: supabaseQual,
+          claudeSuggestion: 'PAS DE REPONSE',
+          leadId,
+        }
+      }
+    })
+  )
+
+  const results: ReclassifyResult[] = settled.map((s, i) =>
+    s.status === 'fulfilled'
+      ? s.value
+      : {
+          callId: callIds[i],
+          retellOutcome: null,
+          supabaseQualification: null,
+          claudeSuggestion: 'PAS DE REPONSE',
+          leadId: null,
+        }
+  )
 
   return NextResponse.json({ data: results })
 }
