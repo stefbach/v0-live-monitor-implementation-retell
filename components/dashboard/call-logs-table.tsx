@@ -27,8 +27,6 @@ import type { CallLogEnriched } from '@/lib/types'
 interface Props {
   calls: CallLogEnriched[]
   isLoading?: boolean
-  confirmedRdvLeadKeys?: Set<string>
-  handoffLeadKeys?: Set<string>
   onCallSelect?: (call: CallLogEnriched) => void
 }
 
@@ -49,11 +47,8 @@ function fmtUsd(cents: number | null | undefined): string {
 export function CallLogsTable({
   calls,
   isLoading,
-  confirmedRdvLeadKeys,
-  handoffLeadKeys,
   onCallSelect,
 }: Props) {
-  const confirmed = confirmedRdvLeadKeys ?? new Set<string>()
   const [sortField, setSortField] = useState<SortField>('startTime')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [page, setPage] = useState(0)
@@ -164,7 +159,7 @@ export function CallLogsTable({
             <tbody>
               {paginated.map((call) => {
                 const lead = call.lead
-                const q = QUAL_META[effectiveQualKey(call, confirmed, handoffLeadKeys)]
+                const q = QUAL_META[effectiveQualKey(call)]
                 const lvl = agentLevel(call.agentName)
                 const leadKey = call.meta?.leadId ?? lead?.id
                 const isMulti = leadKey ? multiAgentLeads.has(leadKey) : false
@@ -267,7 +262,7 @@ export function CallLogsTable({
         <div className="flex flex-col gap-3 lg:hidden">
           {paginated.map((call) => {
             const lead = call.lead
-            const q = QUAL_META[effectiveQualKey(call, confirmed, handoffLeadKeys)]
+            const q = QUAL_META[effectiveQualKey(call)]
             return (
               <button
                 key={call.id}

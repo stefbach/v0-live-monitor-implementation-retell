@@ -1,7 +1,6 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import type { CallLogEnriched, Lead, DashboardFilters } from './types'
-import { computeConfirmedRdvLeads } from './rdv'
 import { leadGroupKey } from './lead-key'
 import { qualKeyFromRaw, QUAL_META, QUALIFICATION_CARDS } from './qualifications'
 import { computeHeatmap } from './analytics'
@@ -102,17 +101,26 @@ export function buildReportData(args: {
     groups.get(key)!.push(c)
   }
 
-  // Confirmed across the entire period (lead-level)
-  const confirmedInPeriod = computeConfirmedRdvLeads(inPeriod)
+  // RDV at lead level — distinct leads tagged "RDV MEDECIN" in Supabase.
+  const rdvLeadsInPeriod = new Set<string>()
+  for (const c of inPeriod) {
+    if (c.lead?.qualification !== 'RDV MEDECIN') continue
+    const k = leadGroupKey(c)
+    if (k) rdvLeadsInPeriod.add(k)
+  }
 
   const rows: ReportRow[] = [...groups.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([periodKey, calls]) => {
       const total = calls.length
       const answered = calls.filter((c) => c.answered).length
-      // RDV at the bucket scope: confirmed leads whose chain has a call in the bucket
-      const bucketConfirmed = computeConfirmedRdvLeads(calls)
-      const rdv = bucketConfirmed.size
+      const bucketRdv = new Set<string>()
+      for (const c of calls) {
+        if (c.lead?.qualification !== 'RDV MEDECIN') continue
+        const k = leadGroupKey(c)
+        if (k) bucketRdv.add(k)
+      }
+      const rdv = bucketRdv.size
       const cost = calls.reduce((s, c) => s + (c.cost ?? 0), 0) / 100
       return {
         period: periodKey,
@@ -134,9 +142,9 @@ export function buildReportData(args: {
     totalCalls: total,
     answered,
     answerRate: total > 0 ? (answered / total) * 100 : 0,
-    rdvConfirmed: confirmedInPeriod.size,
+    rdvConfirmed: rdvLeadsInPeriod.size,
     conversionRate:
-      answered > 0 ? (confirmedInPeriod.size / answered) * 100 : 0,
+      answered > 0 ? (rdvLeadsInPeriod.size / answered) * 100 : 0,
     costDollars: Number(cost.toFixed(2)),
   }
 
@@ -154,13 +162,12 @@ export function buildReportData(args: {
     }
   }
   const counts: Record<string, number> = {}
-  for (const [id, c] of seen.entries()) {
-    let key = qualKeyFromRaw(c.lead?.qualification)
-    if (key === 'rdv_confirme' && !confirmedInPeriod.has(id)) key = 'autre'
+  for (const c of seen.values()) {
+    const key = qualKeyFromRaw(c.lead?.qualification)
     counts[key] = (counts[key] ?? 0) + 1
   }
   const leadsTotal = Object.values(counts).reduce((s, n) => s + n, 0)
-  const qualification = [...QUALIFICATION_CARDS, 'autre' as const]
+  const qualification = QUALIFICATION_CARDS
     .map((k) => ({
       label: QUAL_META[k].label,
       count: counts[k] ?? 0,

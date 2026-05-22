@@ -23,6 +23,7 @@ import { ReportButton } from '@/components/dashboard/report-button'
 import { CallDetailSheet } from '@/components/dashboard/call-detail-sheet'
 import { LiveView } from '@/components/dashboard/live/live-view'
 import { ErrorsView } from '@/components/dashboard/errors/errors-view'
+import { ReclassifyPanel } from '@/components/dashboard/reclassify/reclassify-panel'
 import { MobileBottomNav } from '@/components/dashboard/mobile-bottom-nav'
 import { useDashboardData } from '@/lib/hooks/use-calls'
 import { useT } from '@/lib/hooks/use-t'
@@ -42,8 +43,6 @@ export default function DashboardPage() {
     agentNames,
     callMetrics,
     businessMetrics,
-    confirmedRdvLeadKeys,
-    handoffLeadKeys,
     isLoading,
     refresh,
   } = useDashboardData()
@@ -82,6 +81,9 @@ export default function DashboardPage() {
                 </span>
               </TabsTrigger>
               <TabsTrigger value="erreurs">⚠️ {t('tab.erreurs')}</TabsTrigger>
+              <TabsTrigger value="reclassify" className="gap-1.5">
+                <span className="text-cyan-400">🛠️</span> {t('tab.reclassify')}
+              </TabsTrigger>
               <TabsTrigger value="insights" className="gap-1.5">
                 <span className="text-violet-400">✨</span> {t('tab.insights')}
               </TabsTrigger>
@@ -93,8 +95,6 @@ export default function DashboardPage() {
                 allCalls={allCalls}
                 leads={leads}
                 isLoading={isLoading}
-                confirmedRdvLeadKeys={confirmedRdvLeadKeys}
-                handoffLeadKeys={handoffLeadKeys}
                 onSelectCall={handleCallSelect}
               />
             </TabsContent>
@@ -105,7 +105,7 @@ export default function DashboardPage() {
 
             <TabsContent value="stats" className="mt-6 space-y-6">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">📊 Statistiques</h2>
+                <h2 className="text-lg font-semibold">📊 {t('tab.stats')}</h2>
                 <ReportButton allCalls={allCalls} leads={leads} />
               </div>
               <BusinessKpis
@@ -114,16 +114,12 @@ export default function DashboardPage() {
                 filteredCalls={filteredCalls}
                 allCalls={allCalls}
                 leads={leads}
-                confirmedRdvLeadKeys={confirmedRdvLeadKeys}
-                handoffLeadKeys={handoffLeadKeys}
                 onSelectCall={handleCallSelect}
                 isLoading={isLoading}
               />
 
               <CallHeatmap
                 calls={filteredCalls}
-                confirmedRdvLeadKeys={confirmedRdvLeadKeys}
-                handoffLeadKeys={handoffLeadKeys}
                 onSelectCall={handleCallSelect}
                 isLoading={isLoading}
               />
@@ -162,8 +158,6 @@ export default function DashboardPage() {
 
               <AgentPerformance
                 filteredCalls={filteredCalls}
-                confirmedRdvLeadKeys={confirmedRdvLeadKeys}
-                handoffLeadKeys={handoffLeadKeys}
                 isLoading={isLoading}
               />
 
@@ -178,13 +172,15 @@ export default function DashboardPage() {
               <InsightsPanel filteredCalls={filteredCalls} />
             </TabsContent>
 
+            <TabsContent value="reclassify" className="mt-6">
+              <ReclassifyPanel filteredCalls={filteredCalls} onRefresh={refresh} />
+            </TabsContent>
+
             <TabsContent value="calls" className="mt-6 space-y-4">
               <CallLogsFilters />
               <CallLogsTable
                 calls={filteredCalls}
                 isLoading={isLoading}
-                confirmedRdvLeadKeys={confirmedRdvLeadKeys}
-                handoffLeadKeys={handoffLeadKeys}
                 onCallSelect={handleCallSelect}
               />
             </TabsContent>
@@ -202,8 +198,6 @@ export default function DashboardPage() {
                 allCalls={allCalls}
                 leads={leads}
                 isLoading={isLoading}
-                confirmedRdvLeadKeys={confirmedRdvLeadKeys}
-                handoffLeadKeys={handoffLeadKeys}
                 onSelectCall={handleCallSelect}
               />
             )}
@@ -218,15 +212,11 @@ export default function DashboardPage() {
                   filteredCalls={filteredCalls}
                   allCalls={allCalls}
                   leads={leads}
-                  confirmedRdvLeadKeys={confirmedRdvLeadKeys}
-                handoffLeadKeys={handoffLeadKeys}
                   onSelectCall={handleCallSelect}
                   isLoading={isLoading}
                 />
                 <CallHeatmap
                 calls={filteredCalls}
-                confirmedRdvLeadKeys={confirmedRdvLeadKeys}
-                handoffLeadKeys={handoffLeadKeys}
                 onSelectCall={handleCallSelect}
                 isLoading={isLoading}
               />
@@ -256,8 +246,6 @@ export default function DashboardPage() {
                 <EligibilityPipeline leads={leads} isLoading={isLoading} />
                 <AgentPerformance
                   filteredCalls={filteredCalls}
-                  confirmedRdvLeadKeys={confirmedRdvLeadKeys}
-                handoffLeadKeys={handoffLeadKeys}
                   isLoading={isLoading}
                 />
                 <StatsExtras
@@ -270,14 +258,16 @@ export default function DashboardPage() {
 
             {activeTab === 'insights' && <InsightsPanel filteredCalls={filteredCalls} />}
 
+            {activeTab === 'reclassify' && (
+              <ReclassifyPanel filteredCalls={filteredCalls} onRefresh={refresh} />
+            )}
+
             {activeTab === 'calls' && (
               <div className="space-y-4">
                 <CallLogsFilters />
                 <CallLogsTable
                   calls={filteredCalls}
                   isLoading={isLoading}
-                  confirmedRdvLeadKeys={confirmedRdvLeadKeys}
-                handoffLeadKeys={handoffLeadKeys}
                   onCallSelect={handleCallSelect}
                 />
               </div>
@@ -295,8 +285,6 @@ export default function DashboardPage() {
         open={isSheetOpen}
         onOpenChange={setIsSheetOpen}
         allCalls={allCalls}
-        confirmedRdvLeadKeys={confirmedRdvLeadKeys}
-                handoffLeadKeys={handoffLeadKeys}
         onSelectCall={handleCallSelect}
       />
     </div>

@@ -13,6 +13,9 @@ const ALLOWED = new Set([
   'FOLLOW UP',
   'CALLBACK_SCHEDULED',
   'RAPPEL',
+  'REPONDEUR',
+  'NON ELIGIBLE',
+  "À PASSER À L'HUMAIN",
 ])
 
 interface Body {

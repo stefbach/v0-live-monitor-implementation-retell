@@ -23,6 +23,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useInsights } from '@/lib/hooks/use-insights'
 import { useFiltersStore } from '@/lib/stores/filters-store'
 import { PERIODS } from '@/lib/filters'
+import { CallDetailSheet } from '@/components/dashboard/call-detail-sheet'
 import type { CallLogEnriched } from '@/lib/types'
 import type {
   InsightsResult,
@@ -42,6 +43,7 @@ function periodLabel(period: string): string {
 export function InsightsPanel({ filteredCalls }: Props) {
   const filters = useFiltersStore((s) => s.filters)
   const [enabled, setEnabled] = useState(false)
+  const [openCallId, setOpenCallId] = useState<string | null>(null)
   const label = periodLabel(filters.period)
 
   const callsWithSummary = useMemo(
@@ -171,7 +173,11 @@ export function InsightsPanel({ filteredCalls }: Props) {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <ScriptAudit audit={insights.script_audit} callsById={callsById} />
-        <SentimentClimate sentiment={insights.sentiment} callsById={callsById} />
+        <SentimentClimate
+          sentiment={insights.sentiment}
+          callsById={callsById}
+          onSelectCallId={setOpenCallId}
+        />
       </div>
 
       {(insights.optimization_hypotheses ?? []).length > 0 && (
@@ -183,6 +189,13 @@ export function InsightsPanel({ filteredCalls }: Props) {
         chiffres décrivent les données observées — ils ne prédisent pas l&apos;impact d&apos;un
         changement.
       </p>
+
+      <CallDetailSheet
+        callId={openCallId}
+        open={!!openCallId}
+        onOpenChange={(o) => !o && setOpenCallId(null)}
+        allCalls={filteredCalls}
+      />
     </div>
   )
 }
@@ -494,9 +507,11 @@ function ScriptAudit({
 function SentimentClimate({
   sentiment,
   callsById,
+  onSelectCallId,
 }: {
   sentiment: InsightsResult['sentiment']
   callsById: Map<string, CallLogEnriched>
+  onSelectCallId: (id: string) => void
 }) {
   const dist = sentiment?.distribution ?? { positive: 0, neutral: 0, negative: 0 }
   const hotLeads = sentiment?.hot_leads ?? []
@@ -559,16 +574,22 @@ function SentimentClimate({
               {hotLeads.map((hl: HotLead) => {
                 const c = callsById.get(hl.call_id)
                 return (
-                  <li key={hl.call_id} className="rounded-md border border-border/50 bg-muted/20 p-2">
-                    <p className="text-sm font-medium truncate">
-                      {c?.lead?.nom ?? `Call ${hl.call_id.slice(0, 8)}`}
-                      {c?.lead?.numero_telephone && (
-                        <span className="text-xs text-muted-foreground font-mono ml-2">
-                          {c.lead.numero_telephone}
-                        </span>
-                      )}
-                    </p>
-                    <p className="text-xs text-muted-foreground">{hl.reason}</p>
+                  <li key={hl.call_id}>
+                    <button
+                      type="button"
+                      onClick={() => onSelectCallId(c?.id ?? hl.call_id)}
+                      className="w-full rounded-md border border-border/50 bg-muted/20 p-2 text-left transition-colors hover:bg-muted/40"
+                    >
+                      <p className="text-sm font-medium truncate">
+                        {c?.lead?.nom ?? `Call ${hl.call_id.slice(0, 8)}`}
+                        {c?.lead?.numero_telephone && (
+                          <span className="text-xs text-muted-foreground font-mono ml-2">
+                            {c.lead.numero_telephone}
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{hl.reason}</p>
+                    </button>
                   </li>
                 )
               })}

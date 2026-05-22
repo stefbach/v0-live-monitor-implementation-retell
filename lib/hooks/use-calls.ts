@@ -14,8 +14,6 @@ import type {
 import { applyFilters } from '@/lib/filters'
 import { useFiltersStore } from '@/lib/stores/filters-store'
 import { computeBusinessMetrics } from '@/lib/leads'
-import { computeConfirmedRdvLeads } from '@/lib/rdv'
-import { computeHandoffLeadKeys } from '@/lib/director-metrics'
 
 const fetcher = async <T>(url: string): Promise<T> => {
   const res = await fetch(url)
@@ -37,8 +35,6 @@ export interface DashboardData {
   agentNames: Record<string, string>
   callMetrics: CallMetrics
   businessMetrics: BusinessMetrics | null
-  confirmedRdvLeadKeys: Set<string>
-  handoffLeadKeys: Set<string>
   filters: DashboardFilters
   isLoading: boolean
   isError: unknown
@@ -87,7 +83,6 @@ export function useDashboardData(): DashboardData {
 
   const businessMetrics = useMemo<BusinessMetrics | null>(() => {
     if (!leads.length) return null
-    // Per-agent call stats from filtered calls only
     const callsByAgent = new Map<string, { calls: number; duration: number; cost: number }>()
     for (const c of filteredCalls) {
       if (!c.agentId) continue
@@ -100,21 +95,6 @@ export function useDashboardData(): DashboardData {
     return computeBusinessMetrics(leads, agentNames, callsByAgent)
   }, [leads, agentNames, filteredCalls])
 
-  // Strict RDV-confirmed lead set computed from ALL calls (badges should
-  // reflect the lead's full history, not just the current period filter).
-  const confirmedRdvLeadKeys = useMemo(
-    () => computeConfirmedRdvLeads(allCalls),
-    [allCalls]
-  )
-
-  // Leads flagged for human handoff (≥20s call + handoff signal or
-  // explicit CRM tag). Drives both the qualif card and the handoff
-  // section — same Set so the counts match.
-  const handoffLeadKeys = useMemo(
-    () => computeHandoffLeadKeys(allCalls, leads),
-    [allCalls, leads]
-  )
-
   return {
     allCalls,
     filteredCalls,
@@ -122,8 +102,6 @@ export function useDashboardData(): DashboardData {
     agentNames,
     callMetrics,
     businessMetrics,
-    confirmedRdvLeadKeys,
-    handoffLeadKeys,
     filters,
     isLoading,
     isError: error,
@@ -160,8 +138,6 @@ export function useCallDetail(callId: string | null) {
     (CallLogEnriched & { fullLead?: Lead | null }) | null
   >(callId ? `/api/retell/call/${callId}` : null, fetcher, {
     onSuccess: () => {
-      // Server may have just inserted a robot_awareness / voicemail_suspected
-      // row into dashboard_errors — refresh the counters (#10).
       globalMutate('/api/dashboard/errors')
     },
   })

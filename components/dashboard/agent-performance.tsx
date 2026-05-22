@@ -9,8 +9,6 @@ import type { CallLogEnriched } from '@/lib/types'
 
 interface Props {
   filteredCalls: CallLogEnriched[]
-  confirmedRdvLeadKeys: Set<string>
-  handoffLeadKeys?: Set<string>
   isLoading?: boolean
 }
 
@@ -44,7 +42,6 @@ function formatUsd(cents: number): string {
 
 export function AgentPerformance({
   filteredCalls,
-  confirmedRdvLeadKeys,
   isLoading,
 }: Props) {
   const toggle = useFiltersStore((s) => s.toggleArray)
@@ -61,15 +58,15 @@ export function AgentPerformance({
       const duration = calls.reduce((s, c) => s + c.duration, 0)
       const cost = calls.reduce((s, c) => s + (c.cost ?? 0), 0)
 
-      // RDV credit: confirmed leads whose chain includes this agent level
+      // RDV credit: distinct leads with Supabase qualification = RDV MEDECIN
+      // whose chain touched this agent level.
       const leadsTouched = new Set<string>()
+      let rdv = 0
       for (const c of calls) {
         const k = leadGroupKey(c)
-        if (k) leadsTouched.add(k)
-      }
-      let rdv = 0
-      for (const k of leadsTouched) {
-        if (confirmedRdvLeadKeys.has(k)) rdv++
+        if (!k || leadsTouched.has(k)) continue
+        leadsTouched.add(k)
+        if (c.lead?.qualification === 'RDV MEDECIN') rdv++
       }
 
       return {
@@ -85,7 +82,7 @@ export function AgentPerformance({
         totalCost: cost,
       }
     })
-  }, [filteredCalls, confirmedRdvLeadKeys])
+  }, [filteredCalls])
 
   if (isLoading) {
     return (

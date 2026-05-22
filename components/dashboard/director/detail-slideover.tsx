@@ -26,8 +26,6 @@ interface Props {
   showRaw?: boolean // show raw Retell status instead of mapped qualif badge
   showRappelDate?: boolean // surface the lead's rappel_rdv datetime per row
   showSummary?: boolean // surface the call summary text under each row
-  confirmedRdvLeadKeys?: Set<string>
-  handoffLeadKeys?: Set<string>
 }
 
 function fmtRappel(iso: string | null | undefined): string | null {
@@ -61,10 +59,7 @@ export function DetailSlideOver({
   showRaw,
   showRappelDate,
   showSummary,
-  confirmedRdvLeadKeys,
-  handoffLeadKeys,
 }: Props) {
-  const confirmed = confirmedRdvLeadKeys ?? new Set<string>()
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
@@ -82,7 +77,7 @@ export function DetailSlideOver({
             </p>
           )}
           {calls.slice(0, 200).map((c) => {
-            const q = QUAL_META[effectiveQualKey(c, confirmed, handoffLeadKeys)]
+            const q = QUAL_META[effectiveQualKey(c)]
             return (
               <button
                 key={c.id}

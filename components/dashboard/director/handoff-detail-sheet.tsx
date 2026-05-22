@@ -40,8 +40,6 @@ import type { HandoffCandidate } from '@/lib/director-metrics'
 interface Props {
   candidate: HandoffCandidate | null
   allCalls: CallLogEnriched[]
-  confirmedRdvLeadKeys: Set<string>
-  handoffLeadKeys?: Set<string>
   open: boolean
   onOpenChange: (open: boolean) => void
   onAssigned?: (leadId: string, to: string) => void
@@ -56,8 +54,6 @@ function fmtDur(seconds: number): string {
 export function HandoffDetailSheet({
   candidate,
   allCalls,
-  confirmedRdvLeadKeys,
-  handoffLeadKeys,
   open,
   onOpenChange,
   onAssigned,
@@ -206,8 +202,6 @@ export function HandoffDetailSheet({
                   <CallEntry
                     key={c.callId}
                     call={c}
-                    confirmed={confirmedRdvLeadKeys}
-                    handoffKeys={handoffLeadKeys}
                     isOpen={openCallId === c.callId}
                     onToggle={() =>
                       setOpenCallId(openCallId === c.callId ? null : c.callId)
@@ -249,19 +243,15 @@ function InfoField({
 
 function CallEntry({
   call,
-  confirmed,
-  handoffKeys,
   isOpen,
   onToggle,
 }: {
   call: CallLogEnriched
-  confirmed: Set<string>
-  handoffKeys?: Set<string>
   isOpen: boolean
   onToggle: () => void
 }) {
   const [audioTime, setAudioTime] = useState(0)
-  const q = QUAL_META[effectiveQualKey(call, confirmed, handoffKeys)]
+  const q = QUAL_META[effectiveQualKey(call)]
   const lvl = agentLevel(call.agentName)
 
   return (

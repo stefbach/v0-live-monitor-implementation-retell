@@ -34,8 +34,6 @@ interface Props {
   filteredCalls: CallLogEnriched[]
   allCalls: CallLogEnriched[]
   leads: Lead[]
-  confirmedRdvLeadKeys?: Set<string>
-  handoffLeadKeys?: Set<string>
   onSelectCall?: (call: CallLogEnriched) => void
   isLoading?: boolean
 }
@@ -61,13 +59,10 @@ export function BusinessKpis({
   filteredCalls,
   allCalls,
   leads,
-  confirmedRdvLeadKeys,
-  handoffLeadKeys,
   onSelectCall,
   isLoading,
 }: Props) {
   const filters = useFiltersStore((s) => s.filters)
-  const confirmed = confirmedRdvLeadKeys ?? new Set<string>()
   const [panel, setPanel] = useState<{
     title: string
     calls: CallLogEnriched[]
@@ -76,11 +71,12 @@ export function BusinessKpis({
   const computed = useMemo(() => {
     const total = filteredCalls.length
     const answered = filteredCalls.filter((c) => c.answered).length
-    // Strict RDV count (#1): leads in the confirmed set
+    // RDV count: distinct leads whose Supabase qualification maps to RDV CONFIRME.
     const rdvLeads = new Set<string>()
     for (const c of filteredCalls) {
+      if (c.lead?.qualification !== 'RDV MEDECIN') continue
       const k = leadGroupKey(c)
-      if (k && confirmed.has(k)) rdvLeads.add(k)
+      if (k) rdvLeads.add(k)
     }
     const rdv = rdvLeads.size
     const cost = filteredCalls.reduce((s, c) => s + (c.cost ?? 0), 0)
@@ -99,8 +95,9 @@ export function BusinessKpis({
     const prevAnswered = prevCalls.filter((c) => c.answered).length
     const prevRdvLeads = new Set<string>()
     for (const c of prevCalls) {
+      if (c.lead?.qualification !== 'RDV MEDECIN') continue
       const k = leadGroupKey(c)
-      if (k && confirmed.has(k)) prevRdvLeads.add(k)
+      if (k) prevRdvLeads.add(k)
     }
     const prevRdv = prevRdvLeads.size
     const prevCost = prevCalls.reduce((s, c) => s + (c.cost ?? 0), 0)
@@ -119,7 +116,7 @@ export function BusinessKpis({
       rdvDelta: makeDelta(rdv, prevRdv),
       costDelta: makeDelta(cost, prevCost),
     }
-  }, [filteredCalls, allCalls, filters, confirmed])
+  }, [filteredCalls, allCalls, filters])
 
   // Eligible leads in pipeline (forward-looking, full lead set)
   const eligibleLeadIds = useMemo(() => {
@@ -137,10 +134,7 @@ export function BusinessKpis({
   const callsForId = (id: KpiId): CallLogEnriched[] => {
     switch (id) {
       case 'rdv':
-        return filteredCalls.filter((c) => {
-          const k = leadGroupKey(c)
-          return !!k && confirmed.has(k)
-        })
+        return filteredCalls.filter((c) => c.lead?.qualification === 'RDV MEDECIN')
       case 'answer':
         return filteredCalls.filter((c) => c.answered)
       case 'cost':
@@ -154,10 +148,7 @@ export function BusinessKpis({
       case 'eligible':
         return filteredCalls.filter((c) => c.lead?.id && eligibleLeadIds.has(c.lead.id))
       case 'avg_attempts':
-        return filteredCalls.filter((c) => {
-          const k = leadGroupKey(c)
-          return !!k && confirmed.has(k)
-        })
+        return filteredCalls.filter((c) => c.lead?.qualification === 'RDV MEDECIN')
       case 'active':
       case 'total':
       default:
@@ -281,8 +272,6 @@ export function BusinessKpis({
         onOpenChange={(o) => !o && setPanel(null)}
         title={panel?.title ?? ''}
         calls={panel?.calls ?? []}
-        confirmedRdvLeadKeys={confirmedRdvLeadKeys}
-        handoffLeadKeys={handoffLeadKeys}
         onSelectCall={(c) => {
           setPanel(null)
           onSelectCall?.(c)
