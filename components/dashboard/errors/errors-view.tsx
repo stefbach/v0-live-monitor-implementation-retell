@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useDashboardErrors } from '@/lib/hooks/use-dashboard'
+import { useT } from '@/lib/hooks/use-t'
 import { DirectionIcon } from '../direction-indicator'
 import { AnomalyDetailSheet } from './anomaly-detail-sheet'
 import type { Lead } from '@/lib/types'
@@ -33,6 +34,7 @@ interface Props {
 }
 
 export function ErrorsView({ allCalls, leads }: Props) {
+  const { t } = useT()
   const { errors, isLoading, refresh } = useDashboardErrors()
   const [typeFilter, setTypeFilter] = useState('all')
   const [dateFilter, setDateFilter] = useState('')
@@ -77,9 +79,9 @@ export function ErrorsView({ allCalls, leads }: Props) {
             <div>
               <CardTitle className="flex items-center gap-2 text-base">
                 <Bug className="h-4 w-4 text-red-500" />
-                Log des erreurs système
+                {t('errors.title')}
               </CardTitle>
-              <CardDescription>Table dashboard_errors (Supabase)</CardDescription>
+              <CardDescription>{t('errors.systemDesc')}</CardDescription>
             </div>
             <div className="flex gap-2">
               <select
@@ -87,7 +89,7 @@ export function ErrorsView({ allCalls, leads }: Props) {
                 onChange={(e) => setTypeFilter(e.target.value)}
                 className="h-8 rounded-md border bg-background px-2 text-sm"
               >
-                <option value="all">Tous les types</option>
+                <option value="all">{t('errors.allTypes')}</option>
                 {errorTypes.map((t) => (
                   <option key={t} value={t}>
                     {t}
@@ -108,19 +110,19 @@ export function ErrorsView({ allCalls, leads }: Props) {
             <Skeleton className="h-32 w-full" />
           ) : filteredErrors.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
-              Aucune erreur enregistrée. 👍
+              {t('errors.empty')}
             </p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-left text-xs text-muted-foreground">
-                    <th className="pb-2 font-medium">Date</th>
-                    <th className="pb-2 font-medium">Type</th>
-                    <th className="pb-2 font-medium">Lead / Call</th>
-                    <th className="pb-2 font-medium">Détail</th>
-                    <th className="pb-2 font-medium">Statut</th>
-                    <th className="pb-2 font-medium text-right">Action</th>
+                    <th className="pb-2 font-medium">{t('errors.col.date')}</th>
+                    <th className="pb-2 font-medium">{t('errors.col.type')}</th>
+                    <th className="pb-2 font-medium">{t('errors.col.leadCall')}</th>
+                    <th className="pb-2 font-medium">{t('errors.col.detail')}</th>
+                    <th className="pb-2 font-medium">{t('errors.col.status')}</th>
+                    <th className="pb-2 font-medium text-right">{t('errors.col.action')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -142,10 +144,10 @@ export function ErrorsView({ allCalls, leads }: Props) {
                       </td>
                       <td className="py-2">
                         {e.status === 'resolved' ? (
-                          <Badge className="bg-emerald-500 text-white">Résolu</Badge>
+                          <Badge className="bg-emerald-500 text-white">{t('errors.resolved')}</Badge>
                         ) : (
                           <Badge variant="outline" className="text-amber-500">
-                            En cours
+                            {t('errors.open')}
                           </Badge>
                         )}
                       </td>
@@ -160,7 +162,7 @@ export function ErrorsView({ allCalls, leads }: Props) {
                             {resolving === e.id ? (
                               <Loader2 className="h-3 w-3 animate-spin" />
                             ) : (
-                              'Résoudre'
+                              t('errors.resolve')
                             )}
                           </Button>
                         )}
@@ -180,17 +182,17 @@ export function ErrorsView({ allCalls, leads }: Props) {
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base">
               <Voicemail className="h-4 w-4 text-amber-500" />
-              Répondeurs à rappeler ({repondeurs.length})
+              {t('errors.voicemail.title').replace('{n}', String(repondeurs.length))}
             </CardTitle>
             <CardDescription>
-              Répondeur détecté ou appel très court suspect
+              {t('errors.voicemail.desc')}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="max-h-[360px] space-y-2 overflow-y-auto">
               {repondeurs.length === 0 ? (
                 <p className="py-6 text-center text-sm text-muted-foreground">
-                  Aucun répondeur à rappeler.
+                  {t('errors.voicemail.empty')}
                 </p>
               ) : (
                 repondeurs.slice(0, 60).map((r) => {
@@ -203,20 +205,20 @@ export function ErrorsView({ allCalls, leads }: Props) {
                       <div className="min-w-0">
                         <p className="flex items-center gap-1.5 truncate text-sm font-medium">
                           <DirectionIcon direction={r.direction} size="sm" />
-                          {r.name ?? 'Inconnu'}{' '}
+                          {r.name ?? t('director.handoff.unknown')}{' '}
                           <span className="font-mono text-xs text-muted-foreground">
                             {r.phone}
                           </span>
                         </p>
                         <p className="text-[11px] text-muted-foreground">
                           {r.duration}s ·{' '}
-                          {r.inVoicemail ? 'voicemail confirmé' : 'suspecté'} ·{' '}
+                          {r.inVoicemail ? t('errors.voicemailConfirmed') : t('errors.voicemailSuspected')} ·{' '}
                           {r.time ? format(new Date(r.time), 'dd/MM HH:mm') : ''}
                         </p>
                       </div>
                       {done ? (
                         <Badge className="bg-emerald-500 text-white shrink-0">
-                          Rappelé
+                          {t('errors.voicemail.recalled')}
                         </Badge>
                       ) : (
                         <Button

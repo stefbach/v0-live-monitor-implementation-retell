@@ -131,14 +131,14 @@ export function DirectorView({
     color: string
     highlight?: boolean
   }[] = [
-    { id: 'total', label: 'Total appels', value: kpis.totalCalls.toLocaleString(), icon: Phone, color: 'bg-blue-500/10 text-blue-500' },
-    { id: 'answered', label: 'Décrochés', value: `${kpis.answered.toLocaleString()} · ${kpis.answeredPct.toFixed(0)}%`, icon: PhoneCall, color: 'bg-emerald-500/10 text-emerald-500' },
-    { id: 'cost', label: 'Coût consommé', value: fmtUsd(kpis.cost), icon: DollarSign, color: 'bg-amber-500/10 text-amber-500' },
-    { id: 'rdv', label: 'RDV confirmés', value: kpis.rdvConfirmed.toLocaleString(), icon: CalendarCheck, color: 'bg-emerald-500/10 text-emerald-500', highlight: true },
-    { id: 'conversion', label: 'Taux de conversion', value: `${kpis.conversionRate.toFixed(1)}%`, icon: TrendingUp, color: 'bg-violet-500/10 text-violet-500' },
-    { id: 'avg', label: 'Durée moyenne (TMMC)', value: fmtDur(kpis.avgDuration), icon: Clock, color: 'bg-cyan-500/10 text-cyan-500' },
-    { id: 'callbacks', label: 'Callbacks demandés', value: kpis.callbacks.toLocaleString(), icon: RotateCcw, color: 'bg-orange-500/10 text-orange-400' },
-    { id: 'over', label: `Appels > ${threshold}s`, value: kpis.callsOverThreshold.toLocaleString(), icon: Timer, color: 'bg-zinc-500/10 text-zinc-400' },
+    { id: 'total', label: t('director.totalCalls'), value: kpis.totalCalls.toLocaleString(), icon: Phone, color: 'bg-blue-500/10 text-blue-500' },
+    { id: 'answered', label: t('director.answered'), value: `${kpis.answered.toLocaleString()} · ${kpis.answeredPct.toFixed(0)}%`, icon: PhoneCall, color: 'bg-emerald-500/10 text-emerald-500' },
+    { id: 'cost', label: t('director.costConsumed'), value: fmtUsd(kpis.cost), icon: DollarSign, color: 'bg-amber-500/10 text-amber-500' },
+    { id: 'rdv', label: t('director.rdvConfirmed'), value: kpis.rdvConfirmed.toLocaleString(), icon: CalendarCheck, color: 'bg-emerald-500/10 text-emerald-500', highlight: true },
+    { id: 'conversion', label: t('director.conversion'), value: `${kpis.conversionRate.toFixed(1)}%`, icon: TrendingUp, color: 'bg-violet-500/10 text-violet-500' },
+    { id: 'avg', label: t('director.avgDuration'), value: fmtDur(kpis.avgDuration), icon: Clock, color: 'bg-cyan-500/10 text-cyan-500' },
+    { id: 'callbacks', label: t('director.callbacks'), value: kpis.callbacks.toLocaleString(), icon: RotateCcw, color: 'bg-orange-500/10 text-orange-400' },
+    { id: 'over', label: `${t('logs.col.duration')} > ${threshold}s`, value: kpis.callsOverThreshold.toLocaleString(), icon: Timer, color: 'bg-zinc-500/10 text-zinc-400' },
   ]
 
   return (
@@ -148,8 +148,8 @@ export function DirectorView({
         <div>
           <h2 className="text-lg font-semibold">{t('director.title')}</h2>
           <p className="text-sm text-muted-foreground">
-            Période : <span className="font-medium">{periodLabel}</span> ·{' '}
-            {filteredCalls.length.toLocaleString()} appels
+            {t('common.period')} : <span className="font-medium">{periodLabel}</span> ·{' '}
+            {filteredCalls.length.toLocaleString()} {t('common.calls')}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -188,7 +188,7 @@ export function DirectorView({
       {/* Threshold control for the "> Xs" KPI */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Timer className="h-4 w-4" />
-        Seuil « appels longs » :
+        {t('director.thresholdLabel')}
         <Input
           type="number"
           value={threshold}
@@ -196,7 +196,7 @@ export function DirectorView({
           onChange={(e) => setThreshold(Math.max(1, Number(e.target.value) || 1))}
           className="h-8 w-24"
         />
-        secondes
+        {t('director.thresholdUnit')}
         <span className="ml-1 flex gap-1">
           {[60, 120, 180, 300, 600].map((s) => (
             <button
@@ -310,8 +310,8 @@ export function DirectorView({
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Suivi J1 / J3 / J5</CardTitle>
-            <CardDescription>Volume par phase et par créneau d&apos;appel UK</CardDescription>
+            <CardTitle className="text-base">{t('director.phaseTracking')}</CardTitle>
+            <CardDescription>{t('director.phase.desc')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -324,7 +324,7 @@ export function DirectorView({
                       <div className="flex justify-between text-sm">
                         <span className="font-medium">{p.phase}</span>
                         <span className="font-mono text-muted-foreground">
-                          {p.leads.toLocaleString()} leads · {p.calls.toLocaleString()} appels
+                          {p.leads.toLocaleString()} {t('director.phase.leads')} · {p.calls.toLocaleString()} {t('common.calls')}
                         </span>
                       </div>
                       <div className="h-2.5 overflow-hidden rounded bg-muted">
@@ -339,7 +339,7 @@ export function DirectorView({
             </div>
             <div className="border-t pt-3">
               <p className="mb-2 text-xs uppercase tracking-wide text-muted-foreground">
-                Par créneau
+                {t('director.phase.bySlot')}
               </p>
               <div className="grid grid-cols-2 gap-2">
                 {phase.creneaux.map((c) => (
@@ -359,17 +359,17 @@ export function DirectorView({
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
-              <Users className="h-4 w-4 text-cyan-500" /> Chaîne d&apos;agents
+              <Users className="h-4 w-4 text-cyan-500" /> {t('director.agentChain')}
             </CardTitle>
             <CardDescription>
-              Combien de leads sont passés sur 1, 2 ou 3 agents
+              {t('director.agentChain.desc')}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {[
-              { label: 'Agent 1 uniquement (Charlotte)', value: agents.agent1Only, bucket: 'a1' as const },
-              { label: 'Agent 1 + 2 (→ Isabelle)', value: agents.agent1And2, bucket: 'a12' as const },
-              { label: 'Agent 1 + 2 + 3 (→ Victoria)', value: agents.agent1And2And3, bucket: 'a123' as const },
+              { label: t('director.agentChain.a1'), value: agents.agent1Only, bucket: 'a1' as const },
+              { label: t('director.agentChain.a12'), value: agents.agent1And2, bucket: 'a12' as const },
+              { label: t('director.agentChain.a123'), value: agents.agent1And2And3, bucket: 'a123' as const },
             ].map((row) => (
               <button
                 key={row.bucket}
@@ -394,10 +394,8 @@ export function DirectorView({
       {/* #8 — Analyse des appels (fusion Duration + Verbatims) */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Analyse des appels</CardTitle>
-          <CardDescription>
-            Distribution des durées (à gauche) · ce qu&apos;ils ont dit (à droite)
-          </CardDescription>
+          <CardTitle className="text-base">{t('director.analysisTitle')}</CardTitle>
+          <CardDescription>{t('director.analysisDesc')}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 lg:grid-cols-2">
@@ -447,6 +445,7 @@ function HandoffSection({
   candidates: ReturnType<typeof computeHandoffCandidates>
   onOpenDetail: (c: ReturnType<typeof computeHandoffCandidates>[number]) => void
 }) {
+  const { t } = useT()
   const [busy, setBusy] = useState<string | null>(null)
   const [done, setDone] = useState<Record<string, string>>({})
 
@@ -469,16 +468,16 @@ function HandoffSection({
       <CardHeader className="pb-2">
         <CardTitle className="text-base flex items-center gap-2">
           <UserPlus className="h-4 w-4 text-violet-500" />
-          Dossiers à confier à un humain
+          {t('director.handoff')}
         </CardTitle>
         <CardDescription>
-          Leads difficiles : éligible non abouti, robot awareness, tentatives échouées
+          {t('director.handoff.desc')}
         </CardDescription>
       </CardHeader>
       <CardContent>
         {candidates.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">
-            Aucun dossier à confier sur cette période. 👍
+            {t('director.handoff.empty')}
           </p>
         ) : (
           <div className="space-y-2">
@@ -492,7 +491,7 @@ function HandoffSection({
                 >
                   <div className="min-w-0">
                     <p className="text-sm font-medium">
-                      {c.name ?? 'Inconnu'}{' '}
+                      {c.name ?? t('director.handoff.unknown')}{' '}
                       <span className="font-mono text-xs text-muted-foreground">
                         {c.phone ?? ''}
                       </span>
@@ -512,7 +511,7 @@ function HandoffSection({
                   </div>
                   {done[c.leadId] ? (
                     <Badge className="bg-emerald-500 text-white">
-                      Assigné à {done[c.leadId]}
+                      {t('director.assign.assigned').replace('{to}', done[c.leadId])}
                     </Badge>
                   ) : (
                     <div
@@ -528,7 +527,7 @@ function HandoffSection({
                         {busy === c.leadId + 'Rain' && (
                           <Loader2 className="mr-1 h-3 w-3 animate-spin" />
                         )}
-                        Assigner à Rain
+                        {t('director.assign.rain')}
                       </Button>
                       <Button
                         size="sm"
@@ -539,7 +538,7 @@ function HandoffSection({
                         {busy === c.leadId + 'Summer' && (
                           <Loader2 className="mr-1 h-3 w-3 animate-spin" />
                         )}
-                        Assigner à Summer
+                        {t('director.assign.summer')}
                       </Button>
                     </div>
                   )}
@@ -548,7 +547,7 @@ function HandoffSection({
             })}
             {candidates.length > 25 && (
               <p className="pt-1 text-center text-xs text-muted-foreground">
-                + {candidates.length - 25} autres dossiers
+                {t('director.othersMore').replace('{n}', String(candidates.length - 25))}
               </p>
             )}
           </div>

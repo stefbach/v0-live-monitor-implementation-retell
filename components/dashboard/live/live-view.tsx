@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { LiveMonitor } from '@/components/dashboard/live-monitor'
 import { recentFeed, computeLiveAlerts, type AlertLevel } from '@/lib/live-alerts'
 import { QUAL_META, qualKeyFromRaw } from '@/lib/qualifications'
+import { useT } from '@/lib/hooks/use-t'
 import type { CallLogEnriched } from '@/lib/types'
 
 interface Props {
@@ -20,6 +21,7 @@ const LEVEL_STYLE: Record<AlertLevel, string> = {
 }
 
 export function LiveView({ allCalls }: Props) {
+  const { t } = useT()
   const feed = useMemo(() => recentFeed(allCalls, 40), [allCalls])
   const alerts = useMemo(() => computeLiveAlerts(allCalls, 30), [allCalls])
   const feedEndRef = useRef<HTMLDivElement>(null)
@@ -39,14 +41,14 @@ export function LiveView({ allCalls }: Props) {
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base">
               <Terminal className="h-4 w-4 text-emerald-500" />
-              Flux des appels terminés
+              {t('liveview.streamTitle')}
             </CardTitle>
-            <CardDescription>Derniers appels, plus récent en bas</CardDescription>
+            <CardDescription>{t('liveview.streamDesc')}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-[320px] overflow-y-auto rounded-md bg-zinc-950 p-3 font-mono text-xs">
               {feed.length === 0 ? (
-                <p className="text-zinc-500">En attente d&apos;appels…</p>
+                <p className="text-zinc-500">{t('liveview.waitingCalls')}</p>
               ) : (
                 [...feed].reverse().map((l) => {
                   const meta = QUAL_META[qualKeyFromRaw(l.qualification)]
@@ -81,17 +83,17 @@ export function LiveView({ allCalls }: Props) {
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base">
               <Siren className="h-4 w-4 text-red-500" />
-              Alertes temps réel
+              {t('liveview.alertsTitle')}
             </CardTitle>
             <CardDescription>
-              Robot awareness · répondeur non détecté · appel anormalement court
+              {t('liveview.alertsDesc')}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-[320px] space-y-2 overflow-y-auto">
               {alerts.length === 0 ? (
                 <p className="py-8 text-center text-sm text-muted-foreground">
-                  Aucune alerte récente. 👍
+                  {t('liveview.noAlerts')}
                 </p>
               ) : (
                 alerts.map((a, i) => (

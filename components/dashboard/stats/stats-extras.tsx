@@ -34,6 +34,7 @@ import {
   endOfDay,
 } from '@/lib/stats-extra'
 import { useDashboardErrors } from '@/lib/hooks/use-dashboard'
+import { useT } from '@/lib/hooks/use-t'
 import type { CallLogEnriched } from '@/lib/types'
 
 interface Props {
@@ -42,13 +43,13 @@ interface Props {
   isLoading?: boolean
 }
 
-const cfg: ChartConfig = {
-  calls: { label: 'Appels', color: 'hsl(217, 91%, 60%)' },
-  cost: { label: 'Coût $', color: 'hsl(38, 92%, 50%)' },
-  count: { label: 'Appels', color: 'hsl(217, 91%, 60%)' },
-}
-
 export function StatsExtras({ allCalls, filteredCalls, isLoading }: Props) {
+  const { t } = useT()
+  const cfg: ChartConfig = {
+    calls: { label: t('stats.label.calls'), color: 'hsl(217, 91%, 60%)' },
+    cost: { label: t('stats.label.cost'), color: 'hsl(38, 92%, 50%)' },
+    count: { label: t('stats.label.calls'), color: 'hsl(217, 91%, 60%)' },
+  }
   const [bin, setBin] = useState(15)
   const [objective, setObjective] = useState(200)
 
@@ -90,13 +91,13 @@ export function StatsExtras({ allCalls, filteredCalls, isLoading }: Props) {
       {/* Activité vs consommation */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Activité vs consommation Retell</CardTitle>
-          <CardDescription>Volume d&apos;appels et coût par jour (UK)</CardDescription>
+          <CardTitle className="text-base">{t('stats.activity.title')}</CardTitle>
+          <CardDescription>{t('stats.activity.desc')}</CardDescription>
         </CardHeader>
         <CardContent>
           {activity.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              Aucune donnée.
+              {t('stats.noData')}
             </p>
           ) : (
             <ChartContainer config={cfg} className="h-[220px] w-full">
@@ -151,8 +152,8 @@ export function StatsExtras({ allCalls, filteredCalls, isLoading }: Props) {
         {/* Volume par créneau */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Volume par créneau horaire</CardTitle>
-            <CardDescription>Appels et taux de réponse · heure UK</CardDescription>
+            <CardTitle className="text-base">{t('stats.creneau.title')}</CardTitle>
+            <CardDescription>{t('stats.creneau.desc')}</CardDescription>
           </CardHeader>
           <CardContent>
             <ChartContainer config={cfg} className="h-[200px] w-full">
@@ -186,8 +187,8 @@ export function StatsExtras({ allCalls, filteredCalls, isLoading }: Props) {
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between gap-2">
               <div>
-                <CardTitle className="text-base">Distribution des durées</CardTitle>
-                <CardDescription>Par tranche de {bin}s</CardDescription>
+                <CardTitle className="text-base">{t('stats.duration.title')}</CardTitle>
+                <CardDescription>{t('stats.duration.desc').replace('{bin}', String(bin))}</CardDescription>
               </div>
               <div className="flex gap-1">
                 {[10, 15, 30, 60].map((b) => (
@@ -231,31 +232,33 @@ export function StatsExtras({ allCalls, filteredCalls, isLoading }: Props) {
         <StatTile
           icon={Bot}
           color="bg-red-500/10 text-red-400"
-          label="Robot awareness détectés"
+          label={t('stats.label.robot')}
           value={persistedRobot.toLocaleString()}
-          sub={`sur la période filtrée · ${
+          sub={t('stats.persistedRobotSub').replace(
+            '{pct}',
             filteredCalls.length > 0
               ? ((persistedRobot / filteredCalls.length) * 100).toFixed(1)
               : '0.0'
-          }%`}
+          )}
         />
         <StatTile
           icon={Voicemail}
           color="bg-amber-500/10 text-amber-500"
-          label="Répondeurs non détectés"
+          label={t('stats.label.voicemailMiss')}
           value={persistedVoicemail.toLocaleString()}
-          sub={`${
+          sub={t('stats.persistedVoicemailSub').replace(
+            '{pct}',
             filteredCalls.length > 0
               ? ((persistedVoicemail / filteredCalls.length) * 100).toFixed(1)
               : '0.0'
-          }% des appels`}
+          )}
         />
         <StatTile
           icon={TrendingUp}
           color="bg-blue-500/10 text-blue-500"
-          label="Analyse au clic"
+          label={t('stats.label.analyzed')}
           value={`${analyzedInPeriod}`}
-          sub={`appels déjà ouverts en détail sur la période`}
+          sub={t('stats.label.analyzed.sub')}
         />
       </div>
 
@@ -264,21 +267,21 @@ export function StatsExtras({ allCalls, filteredCalls, isLoading }: Props) {
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-base">
             <Sun className="h-4 w-4 text-amber-500" />
-            Dashboard de fin de soirée
+            {t('stats.eod.title')}
           </CardTitle>
-          <CardDescription>Bilan du jour (heure UK) et recommandation</CardDescription>
+          <CardDescription>{t('stats.eod.desc')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatTile
               icon={Target}
               color="bg-blue-500/10 text-blue-500"
-              label="Appels aujourd'hui"
+              label={t('stats.eod.todayCalls')}
               value={eod.todayCalls.toLocaleString()}
-              sub={`${eod.answeredToday} décrochés`}
+              sub={`${eod.answeredToday} ${t('stats.answeredCount')}`}
             />
             <div className="rounded-lg border p-3">
-              <p className="text-[11px] text-muted-foreground">Objectif / écart</p>
+              <p className="text-[11px] text-muted-foreground">{t('stats.eod.gap')}</p>
               <div className="mt-1 flex items-center gap-2">
                 <Input
                   type="number"
@@ -302,18 +305,21 @@ export function StatsExtras({ allCalls, filteredCalls, isLoading }: Props) {
             <StatTile
               icon={DollarSign}
               color="bg-amber-500/10 text-amber-500"
-              label="Coût du jour"
+              label={t('stats.label.dailyCost')}
               value={`$${eod.costToday.toFixed(2)}`}
             />
             <StatTile
               icon={Sun}
               color="bg-emerald-500/10 text-emerald-500"
-              label="Meilleur créneau"
+              label={t('stats.label.bestSlot')}
               value={eod.bestCreneau ? eod.bestCreneau.label : '—'}
               sub={
                 eod.bestCreneau
-                  ? `${eod.bestCreneau.answerRate.toFixed(0)}% de réponse`
-                  : 'données insuffisantes'
+                  ? t('stats.eod.bestSlotSub').replace(
+                      '{pct}',
+                      eod.bestCreneau.answerRate.toFixed(0)
+                    )
+                  : t('stats.eod.insufficient')
               }
             />
           </div>
