@@ -1,6 +1,6 @@
 'use client'
 
-import { RefreshCw, Phone } from 'lucide-react'
+import { RefreshCw, Phone, LogOut } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
@@ -88,6 +88,19 @@ export function DashboardHeader({ onRefresh, isRefreshing }: DashboardHeaderProp
         >
           <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
           <span className="sr-only">Refresh data</span>
+        </Button>
+
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={async () => {
+            await fetch('/api/auth/logout', { method: 'POST' })
+            window.location.href = '/login'
+          }}
+          title="Se déconnecter"
+        >
+          <LogOut className="h-4 w-4" />
+          <span className="sr-only">Se déconnecter</span>
         </Button>
       </div>
     </header>
