@@ -1,8 +1,7 @@
+import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { AUTH_COOKIE, verifySession } from '@/lib/auth'
 
-// Public paths — everything else requires a valid signed session cookie.
-const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/logout']
+const PUBLIC_PATHS = ['/login', '/api/auth/callback', '/api/auth/logout']
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
@@ -11,29 +10,52 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
-  // Safety hatch: if the secret isn't configured yet on the deployment,
-  // let traffic through rather than locking everyone out. The login page
-  // will surface the config error if it ever loads.
-  if (!process.env.DASHBOARD_AUTH_SECRET || !process.env.DASHBOARD_PASSWORD) {
+  // Safety hatch: if Supabase env vars aren't configured, let traffic through.
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
     return NextResponse.next()
   }
 
-  const token = req.cookies.get(AUTH_COOKIE)?.value
-  const ok = await verifySession(token)
-  if (ok) return NextResponse.next()
+  let response = NextResponse.next({ request: req })
 
-  // API requests get a 401 (no redirect — the client handles it).
-  if (pathname.startsWith('/api/')) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    {
+      cookies: {
+        getAll() {
+          return req.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => req.cookies.set(name, value))
+          response = NextResponse.next({ request: req })
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          )
+        },
+      },
+    }
+  )
+
+  // Refresh session if expired — required for Server Components
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    const url = req.nextUrl.clone()
+    url.pathname = '/login'
+    url.searchParams.set('next', pathname + (req.nextUrl.search || ''))
+    return NextResponse.redirect(url)
   }
 
-  const url = req.nextUrl.clone()
-  url.pathname = '/login'
-  url.searchParams.set('next', pathname + (req.nextUrl.search || ''))
-  return NextResponse.redirect(url)
+  return response
 }
 
 export const config = {
-  // Run on everything except Next internals and static assets.
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|icon.*|apple-icon.*|.*\\.(?:png|jpg|jpeg|svg|webp|ico|txt)$).*)'],
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|icon.*|apple-icon.*|.*\\.(?:png|jpg|jpeg|svg|webp|ico|txt)$).*)',
+  ],
 }
