@@ -23,7 +23,6 @@ import { ReportButton } from '@/components/dashboard/report-button'
 import { CallDetailSheet } from '@/components/dashboard/call-detail-sheet'
 import { LiveView } from '@/components/dashboard/live/live-view'
 import { ErrorsView } from '@/components/dashboard/errors/errors-view'
-import { ReclassifyPanel } from '@/components/dashboard/reclassify/reclassify-panel'
 import { MobileBottomNav } from '@/components/dashboard/mobile-bottom-nav'
 import { useDashboardData } from '@/lib/hooks/use-calls'
 import { useT } from '@/lib/hooks/use-t'
@@ -167,7 +166,6 @@ export default function DashboardPage() {
 
             <TabsContent value="insights" className="mt-6 space-y-6">
               <InsightsPanel filteredCalls={filteredCalls} />
-              <ReclassifyPanel filteredCalls={filteredCalls} onRefresh={refresh} />
             </TabsContent>
 
             <TabsContent value="calls" className="mt-6 space-y-4">
@@ -253,7 +251,6 @@ export default function DashboardPage() {
             {activeTab === 'insights' && (
               <div className="space-y-6">
                 <InsightsPanel filteredCalls={filteredCalls} />
-                <ReclassifyPanel filteredCalls={filteredCalls} onRefresh={refresh} />
               </div>
             )}
 
