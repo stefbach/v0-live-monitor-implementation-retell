@@ -7,10 +7,14 @@ import type {
   VerbatimEntry,
   DeltaValue,
 } from './types'
+import { effectiveQualKey } from './rdv'
 
 // ─── Day × Hour heatmap (24 × 7) ────────────────────────────────────────────
 
-export function computeHeatmap(calls: CallLogEnriched[]): HeatmapDayHourCell[] {
+export function computeHeatmap(
+  calls: CallLogEnriched[],
+  confirmedRdvLeadKeys: Set<string> = new Set()
+): HeatmapDayHourCell[] {
   const cells: HeatmapDayHourCell[][] = Array.from({ length: 7 }, () =>
     Array.from({ length: 24 }, () => ({
       dayOfWeek: 0,
@@ -35,7 +39,7 @@ export function computeHeatmap(calls: CallLogEnriched[]): HeatmapDayHourCell[] {
     const cell = cells[d][h]
     cell.total++
     if (c.answered) cell.answered++
-    if (c.lead?.qualification === 'RDV MEDECIN') cell.rdv++
+    if (effectiveQualKey(c, confirmedRdvLeadKeys) === 'rdv_confirme') cell.rdv++
   }
   const flat: HeatmapDayHourCell[] = []
   for (let d = 0; d < 7; d++) {
@@ -51,7 +55,10 @@ export function computeHeatmap(calls: CallLogEnriched[]): HeatmapDayHourCell[] {
 
 // ─── Attempt funnel ─────────────────────────────────────────────────────────
 
-export function computeAttemptStats(calls: CallLogEnriched[]): AttemptStat[] {
+export function computeAttemptStats(
+  calls: CallLogEnriched[],
+  confirmedRdvLeadKeys: Set<string> = new Set()
+): AttemptStat[] {
   // Group calls by lead (phone fallback to call.id when no lead)
   const byLead = new Map<string, CallLogEnriched[]>()
   for (const c of calls) {
@@ -73,7 +80,7 @@ export function computeAttemptStats(calls: CallLogEnriched[]): AttemptStat[] {
       leadsReached++
       if (callAtN.answered) answered++
       // RDV credited if any call in this lead's history ended in RDV
-      if (list.some((c) => c.lead?.qualification === 'RDV MEDECIN')) rdv++
+      if (list.some((c) => effectiveQualKey(c, confirmedRdvLeadKeys) === 'rdv_confirme')) rdv++
     }
     stats.push({
       attempt: n,
@@ -91,7 +98,8 @@ export function computeAttemptStats(calls: CallLogEnriched[]): AttemptStat[] {
 
 export function computeAgentChain(
   calls: CallLogEnriched[],
-  agentNames: Record<string, string>
+  agentNames: Record<string, string>,
+  confirmedRdvLeadKeys: Set<string> = new Set()
 ): { nodes: AgentChainNode[]; edges: AgentChainEdge[] } {
   // Per-lead sequence of agents (in order)
   const sequencesByLead = new Map<string, string[]>()
@@ -105,7 +113,7 @@ export function computeAgentChain(
     const seq = sequencesByLead.get(key) ?? []
     if (c.agentId && seq[seq.length - 1] !== c.agentId) seq.push(c.agentId)
     sequencesByLead.set(key, seq)
-    if (c.lead?.qualification === 'RDV MEDECIN') rdvByLead.set(key, true)
+    if (effectiveQualKey(c, confirmedRdvLeadKeys) === 'rdv_confirme') rdvByLead.set(key, true)
   }
 
   // Nodes: leads reached per agent + RDV outcome
@@ -193,16 +201,17 @@ export function computeCostByHour(calls: CallLogEnriched[]): { hour: number; cos
 }
 
 export function computeCostByOutcome(
-  calls: CallLogEnriched[]
+  calls: CallLogEnriched[],
+  confirmedRdvLeadKeys: Set<string> = new Set()
 ): { qualification: string; cost: number; calls: number; rdv: number }[] {
   const map = new Map<string, { cost: number; calls: number; rdv: number }>()
   for (const c of calls) {
-    const q = c.lead?.qualification ?? 'UNMATCHED'
-    const v = map.get(q) ?? { cost: 0, calls: 0, rdv: 0 }
+    const key = effectiveQualKey(c, confirmedRdvLeadKeys)
+    const v = map.get(key) ?? { cost: 0, calls: 0, rdv: 0 }
     v.cost += c.cost ?? 0
     v.calls += 1
-    if (q === 'RDV MEDECIN') v.rdv += 1
-    map.set(q, v)
+    if (key === 'rdv_confirme') v.rdv += 1
+    map.set(key, v)
   }
   return [...map.entries()]
     .map(([qualification, v]) => ({ qualification, ...v }))

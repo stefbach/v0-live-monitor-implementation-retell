@@ -5,6 +5,7 @@ import { ArrowRight, Users } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { computeAgentChain } from '@/lib/analytics'
+import { useRdvStore } from '@/lib/stores/rdv-store'
 import type { CallLogEnriched } from '@/lib/types'
 
 interface Props {
@@ -14,9 +15,10 @@ interface Props {
 }
 
 export function AgentChain({ calls, agentNames, isLoading }: Props) {
+  const confirmedRdvLeadKeys = useRdvStore((s) => s.confirmedRdvLeadKeys)
   const { nodes, edges } = useMemo(
-    () => computeAgentChain(calls, agentNames),
-    [calls, agentNames]
+    () => computeAgentChain(calls, agentNames, confirmedRdvLeadKeys),
+    [calls, agentNames, confirmedRdvLeadKeys]
   )
 
   if (isLoading) {

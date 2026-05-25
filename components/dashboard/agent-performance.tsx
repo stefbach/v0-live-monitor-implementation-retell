@@ -4,12 +4,13 @@ import { useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useFiltersStore } from '@/lib/stores/filters-store'
+import { useRdvStore } from '@/lib/stores/rdv-store'
 import { agentLevel, leadGroupKey } from '@/lib/lead-key'
+import { effectiveQualKey } from '@/lib/rdv'
 import type { CallLogEnriched } from '@/lib/types'
 
 interface Props {
   filteredCalls: CallLogEnriched[]
-  confirmedRdvLeadKeys: Set<string>
   isLoading?: boolean
 }
 
@@ -43,11 +44,11 @@ function formatUsd(cents: number): string {
 
 export function AgentPerformance({
   filteredCalls,
-  confirmedRdvLeadKeys,
   isLoading,
 }: Props) {
   const toggle = useFiltersStore((s) => s.toggleArray)
   const selected = useFiltersStore((s) => s.filters.agents)
+  const confirmedRdvLeadKeys = useRdvStore((s) => s.confirmedRdvLeadKeys)
   const selSet = new Set(selected)
 
   const rows: LevelRow[] = useMemo(() => {
@@ -60,15 +61,15 @@ export function AgentPerformance({
       const duration = calls.reduce((s, c) => s + c.duration, 0)
       const cost = calls.reduce((s, c) => s + (c.cost ?? 0), 0)
 
-      // RDV credit: confirmed leads whose chain includes this agent level
+      // RDV credit: distinct leads with Supabase qualification = RDV MEDECIN
+      // whose chain touched this agent level.
       const leadsTouched = new Set<string>()
+      let rdv = 0
       for (const c of calls) {
         const k = leadGroupKey(c)
-        if (k) leadsTouched.add(k)
-      }
-      let rdv = 0
-      for (const k of leadsTouched) {
-        if (confirmedRdvLeadKeys.has(k)) rdv++
+        if (!k || leadsTouched.has(k)) continue
+        leadsTouched.add(k)
+        if (effectiveQualKey(c, confirmedRdvLeadKeys) === 'rdv_confirme') rdv++
       }
 
       return {

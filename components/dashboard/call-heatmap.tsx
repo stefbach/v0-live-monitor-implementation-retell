@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { computeHeatmap } from '@/lib/analytics'
+import { useRdvStore } from '@/lib/stores/rdv-store'
 import { useT } from '@/lib/hooks/use-t'
 import { DetailSlideOver } from './director/detail-slideover'
 import type { CallLogEnriched } from '@/lib/types'
@@ -15,7 +16,6 @@ const HOURS = Array.from({ length: 24 }, (_, i) => i)
 
 interface Props {
   calls: CallLogEnriched[]
-  confirmedRdvLeadKeys?: Set<string>
   onSelectCall?: (call: CallLogEnriched) => void
   isLoading?: boolean
 }
@@ -50,18 +50,21 @@ function cellStyle(
 
 export function CallHeatmap({
   calls,
-  confirmedRdvLeadKeys,
   onSelectCall,
   isLoading,
 }: Props) {
   const { t } = useT()
+  const confirmedRdvLeadKeys = useRdvStore((s) => s.confirmedRdvLeadKeys)
   const [mode, setMode] = useState<Mode>('answer')
   const [panel, setPanel] = useState<{
     title: string
     calls: CallLogEnriched[]
   } | null>(null)
 
-  const cells = useMemo(() => computeHeatmap(calls), [calls])
+  const cells = useMemo(
+    () => computeHeatmap(calls, confirmedRdvLeadKeys),
+    [calls, confirmedRdvLeadKeys]
+  )
 
   // Top 3 slots: minimum 3 calls in the slot to avoid noise
   const topKey = (dow: number, h: number) => `${dow}-${h}`
@@ -256,7 +259,6 @@ export function CallHeatmap({
         onOpenChange={(o) => !o && setPanel(null)}
         title={panel?.title ?? ''}
         calls={panel?.calls ?? []}
-        confirmedRdvLeadKeys={confirmedRdvLeadKeys}
         onSelectCall={(c) => {
           setPanel(null)
           onSelectCall?.(c)

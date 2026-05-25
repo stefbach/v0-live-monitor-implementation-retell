@@ -1,4 +1,4 @@
-import type OpenAI from 'openai'
+import type Anthropic from '@anthropic-ai/sdk'
 import { BUSINESS_CONTEXT, hasBusinessContext } from './business-context'
 
 const BASE_SYSTEM_PROMPT = `Tu es un analyste senior pour un call-center d'une clinique de chirurgie de l'obésité au Royaume-Uni (parcours NHS WMP S2). Tu reçois des données anonymisées sur des appels téléphoniques entre des agents IA (Retell) et des prospects/patients.
@@ -51,14 +51,12 @@ export function buildSystemPrompt(): string {
   return parts.join('\n')
 }
 
-// OpenAI / DeepSeek tool definition format
-export const INSIGHTS_TOOL: OpenAI.Chat.Completions.ChatCompletionTool = {
-  type: 'function',
-  function: {
-    name: 'emit_insights',
-    description:
-      "Émet l'analyse complète des appels du call-center en JSON structuré pour affichage dashboard.",
-    parameters: {
+// Anthropic Claude tool definition format
+export const INSIGHTS_TOOL: Anthropic.Tool = {
+  name: 'emit_insights',
+  description:
+    "Émet l'analyse complète des appels du call-center en JSON structuré pour affichage dashboard.",
+  input_schema: {
       type: 'object',
       required: [
         'pulse',
@@ -234,8 +232,8 @@ export const INSIGHTS_TOOL: OpenAI.Chat.Completions.ChatCompletionTool = {
         },
       },
     },
-  },
 }
+
 
 export function buildUserMessage(args: {
   periodLabel: string

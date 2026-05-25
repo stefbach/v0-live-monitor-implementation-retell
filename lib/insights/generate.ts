@@ -1,4 +1,4 @@
-import { getDeepSeek, DEEPSEEK_MODEL } from '@/lib/llm'
+import { getAnthropic, ANTHROPIC_MODEL } from '@/lib/llm'
 import { buildSystemPrompt, INSIGHTS_TOOL, buildUserMessage } from './prompts'
 import type { InsightsCallInput, InsightsResult } from './types'
 
@@ -69,28 +69,9 @@ function aggregateStats(calls: InsightsCallInput[]) {
   }
 }
 
-// DeepSeek's function-calling sometimes returns slightly malformed JSON
-// (trailing commas, unescaped quotes inside strings). Try lenient repair
-// before giving up.
-function parseToolArguments(raw: string): Record<string, unknown> {
-  try {
-    return JSON.parse(raw) as Record<string, unknown>
-  } catch {
-    // Strip trailing commas before ] or }
-    const cleaned = raw.replace(/,(\s*[}\]])/g, '$1')
-    try {
-      return JSON.parse(cleaned) as Record<string, unknown>
-    } catch {
-      throw new Error(
-        'Le LLM a renvoyé un JSON invalide. Réessaie en cliquant "Re-générer".'
-      )
-    }
-  }
-}
-
-// DeepSeek frequently omits optional-feeling fields even when the schema
-// marks them required (unlike Claude). Normalize the raw output so that
-// every field expected by the UI is present with a safe default.
+// Claude's tool-use response sometimes omits optional-feeling fields even when
+// the schema marks them required. Normalize the raw output so that every field
+// expected by the UI is present with a safe default.
 function normalizeInsights(raw: unknown): Omit<InsightsResult, 'meta'> {
   const r = (raw ?? {}) as Record<string, unknown>
   const pulse = (r.pulse ?? {}) as Record<string, unknown>
@@ -186,10 +167,10 @@ export async function generateInsights({
   periodLabel,
 }: GenerateArgs): Promise<InsightsResult> {
   const startedAt = Date.now()
-  const client = getDeepSeek()
+  const client = getAnthropic()
   if (!client) {
     throw new Error(
-      "DEEPSEEK_API_KEY n'est pas configurée. Ajoute-la dans les variables d'environnement Vercel puis redéploie."
+      "ANTHROPIC_API_KEY n'est pas configurée. Ajoute-la dans les variables d'environnement Vercel puis redéploie."
     )
   }
 
@@ -220,28 +201,27 @@ export async function generateInsights({
     callsJson: JSON.stringify(compact),
   })
 
-  const completion = await client.chat.completions.create({
-    model: DEEPSEEK_MODEL,
-    messages: [
-      { role: 'system', content: buildSystemPrompt() },
-      { role: 'user', content: userMessage },
-    ],
+  const response = await client.messages.create({
+    model: ANTHROPIC_MODEL,
+    max_tokens: 4096,
+    system: buildSystemPrompt(),
+    messages: [{ role: 'user', content: userMessage }],
     tools: [INSIGHTS_TOOL],
-    tool_choice: { type: 'function', function: { name: 'emit_insights' } },
-    max_tokens: 4000,
+    tool_choice: { type: 'tool', name: 'emit_insights' },
     temperature: 0.3,
   })
 
-  const message = completion.choices?.[0]?.message
-  const toolCall = message?.tool_calls?.[0]
-  if (!toolCall || toolCall.type !== 'function') {
+  const toolUse = response.content.find(
+    (block): block is Extract<typeof block, { type: 'tool_use' }> =>
+      block.type === 'tool_use'
+  )
+  if (!toolUse) {
     throw new Error(
       "Le LLM n'a pas appelé l'outil structuré. Réessaie ou contacte l'équipe technique."
     )
   }
 
-  const rawArgs = parseToolArguments(toolCall.function.arguments)
-  const insights = normalizeInsights(rawArgs)
+  const insights = normalizeInsights(toolUse.input)
 
   return {
     ...insights,
@@ -250,7 +230,7 @@ export async function generateInsights({
       calls_analysed: calls.length,
       calls_with_summary: callsWithSummary.length,
       period_label: periodLabel,
-      model: DEEPSEEK_MODEL,
+      model: ANTHROPIC_MODEL,
       cached: false,
       elapsed_ms: Date.now() - startedAt,
     },

@@ -1,31 +1,21 @@
-// Maps raw leads_rdv.qualification values (source of truth for the CRM
-// state of a lead) to the dashboard's display taxonomy + colour palette.
+// Maps raw leads_rdv.qualification values (the ONLY source of truth for
+// the CRM state of a lead) to the dashboard's 9 display qualifications.
 //
-// Decided with the user:
-//   RDV MEDECIN                                  → RDV CONFIRME (vert)
-//   CALLBACK_SCHEDULED | FOLLOW UP | RAPPEL       → RAPPEL (orange)
-//   PAS INTERESSE                                → PAS INTERESSE (rouge)
-//   PAS DE REPONSE                               → PAS DE REPONSE (gris)
-//   FAUX NUMERO                                  → FAUX NUMERO (rouge foncé)
-//   NOUVEAU DOSSIER                              → NOUVEAU DOSSIER (bleu)
-//   NE PAS RAPPELER                              → NE PAS RAPPELER (noir, manuel)
-//   NON ELIGIBLE                                 → calculé (BMI hors S2), pas stocké
-//   TRANSFERRED_TO_ISABELLE                      → "autre" (hors des 8 cards,
-//                                                  visible dans la chaîne d'agents)
+// Anything outside the 9 cards — including the bootstrap state
+// 'NOUVEAU DOSSIER', a missing qualification, or an unknown value — is
+// routed to 'pas_de_reponse' so every call lives in exactly one card
+// and the totals always sum to the number of calls displayed.
 
 export type QualKey =
   | 'rdv_confirme'
-  | 'rdv_non_confirme'
   | 'a_passer_a_humain'
   | 'rappel'
   | 'pas_interesse'
   | 'pas_de_reponse'
   | 'repondeur'
   | 'faux_numero'
-  | 'nouveau_dossier'
   | 'non_eligible'
   | 'ne_pas_rappeler'
-  | 'autre'
 
 export interface QualMeta {
   key: QualKey
@@ -33,6 +23,7 @@ export interface QualMeta {
   badgeClass: string // for <Badge variant="outline">
   dotClass: string // small colour dot / bar
   cardAccent: string // left-border / ring accent for CRM cards
+  hex: string // canonical hex from spec
 }
 
 const RAW_TO_KEY: Record<string, QualKey> = {
@@ -50,9 +41,10 @@ const RAW_TO_KEY: Record<string, QualKey> = {
   'PAS DE REPONSE': 'pas_de_reponse',
   REPONDEUR: 'repondeur',
   'FAUX NUMERO': 'faux_numero',
-  'NOUVEAU DOSSIER': 'nouveau_dossier',
   'NON ELIGIBLE': 'non_eligible',
   'NE PAS RAPPELER': 'ne_pas_rappeler',
+  // NOUVEAU DOSSIER = lead never engaged → counted as "pas de réponse".
+  'NOUVEAU DOSSIER': 'pas_de_reponse',
 }
 
 export const QUAL_META: Record<QualKey, QualMeta> = {
@@ -62,6 +54,7 @@ export const QUAL_META: Record<QualKey, QualMeta> = {
     badgeClass: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30',
     dotClass: 'bg-emerald-500',
     cardAccent: 'border-l-emerald-500',
+    hex: '#10B981',
   },
   a_passer_a_humain: {
     key: 'a_passer_a_humain',
@@ -69,34 +62,31 @@ export const QUAL_META: Record<QualKey, QualMeta> = {
     badgeClass: 'bg-sky-500/10 text-sky-500 border-sky-500/30',
     dotClass: 'bg-sky-500',
     cardAccent: 'border-l-sky-500',
-  },
-  rdv_non_confirme: {
-    key: 'rdv_non_confirme',
-    label: 'RDV (non confirmé)',
-    badgeClass: 'bg-amber-500/10 text-amber-500 border-amber-500/40',
-    dotClass: 'bg-amber-500',
-    cardAccent: 'border-l-amber-500',
+    hex: '#0EA5E9',
   },
   rappel: {
     key: 'rappel',
     label: 'RAPPEL',
-    badgeClass: 'bg-orange-500/10 text-orange-400 border-orange-500/30',
+    badgeClass: 'bg-orange-500/10 text-orange-500 border-orange-500/30',
     dotClass: 'bg-orange-500',
     cardAccent: 'border-l-orange-500',
+    hex: '#F97316',
   },
   pas_interesse: {
     key: 'pas_interesse',
     label: 'PAS INTERESSE',
-    badgeClass: 'bg-red-500/10 text-red-400 border-red-500/30',
+    badgeClass: 'bg-red-500/10 text-red-500 border-red-500/30',
     dotClass: 'bg-red-500',
     cardAccent: 'border-l-red-500',
+    hex: '#EF4444',
   },
   pas_de_reponse: {
     key: 'pas_de_reponse',
     label: 'PAS DE REPONSE',
-    badgeClass: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/30',
-    dotClass: 'bg-zinc-500',
-    cardAccent: 'border-l-zinc-500',
+    badgeClass: 'bg-gray-500/10 text-gray-400 border-gray-500/30',
+    dotClass: 'bg-gray-500',
+    cardAccent: 'border-l-gray-500',
+    hex: '#6B7280',
   },
   repondeur: {
     key: 'repondeur',
@@ -104,20 +94,15 @@ export const QUAL_META: Record<QualKey, QualMeta> = {
     badgeClass: 'bg-amber-500/15 text-amber-500 border-amber-500/40',
     dotClass: 'bg-amber-500',
     cardAccent: 'border-l-amber-500',
+    hex: '#F59E0B',
   },
   faux_numero: {
     key: 'faux_numero',
     label: 'FAUX NUMERO',
-    badgeClass: 'bg-rose-700/15 text-rose-400 border-rose-700/40',
-    dotClass: 'bg-rose-700',
-    cardAccent: 'border-l-rose-700',
-  },
-  nouveau_dossier: {
-    key: 'nouveau_dossier',
-    label: 'NOUVEAU DOSSIER',
-    badgeClass: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
-    dotClass: 'bg-blue-500',
-    cardAccent: 'border-l-blue-500',
+    badgeClass: 'bg-red-700/15 text-red-500 border-red-700/40',
+    dotClass: 'bg-red-700',
+    cardAccent: 'border-l-red-700',
+    hex: '#DC2626',
   },
   non_eligible: {
     key: 'non_eligible',
@@ -125,29 +110,20 @@ export const QUAL_META: Record<QualKey, QualMeta> = {
     badgeClass: 'bg-violet-500/10 text-violet-400 border-violet-500/30',
     dotClass: 'bg-violet-500',
     cardAccent: 'border-l-violet-500',
+    hex: '#8B5CF6',
   },
   ne_pas_rappeler: {
     key: 'ne_pas_rappeler',
     label: 'NE PAS RAPPELER',
-    badgeClass: 'bg-zinc-900 text-zinc-300 border-zinc-700',
-    dotClass: 'bg-zinc-900',
-    cardAccent: 'border-l-zinc-700',
-  },
-  autre: {
-    key: 'autre',
-    label: 'AUTRE',
-    badgeClass: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/30',
-    dotClass: 'bg-zinc-500',
-    cardAccent: 'border-l-zinc-500',
+    badgeClass: 'bg-gray-800 text-gray-300 border-gray-700',
+    dotClass: 'bg-gray-800',
+    cardAccent: 'border-l-gray-800',
+    hex: '#1F2937',
   },
 }
 
-// Cards shown on the Vue d'ensemble, in display order.
-// NOUVEAU DOSSIER is intentionally NOT in the cards: that label is the
-// CRM default state before any call has been placed. Calls whose lead is
-// still tagged NOUVEAU DOSSIER are re-routed into a concrete bucket
-// (RAPPEL / REPONDEUR / PAS DE REPONSE) based on the call signals — see
-// computeQualificationCounts in lib/director-metrics.ts.
+// Final card order (matches the user-approved spec, top to bottom,
+// left to right in the grid).
 export const QUALIFICATION_CARDS: QualKey[] = [
   'rdv_confirme',
   'a_passer_a_humain',
@@ -160,9 +136,12 @@ export const QUALIFICATION_CARDS: QualKey[] = [
   'ne_pas_rappeler',
 ]
 
+// Anything unmappable → 'pas_de_reponse' so every call lives in exactly
+// one card. No 'autre' bucket. No Retell-derived overlay. Source = the
+// raw string in leads_rdv.qualification.
 export function qualKeyFromRaw(raw: string | null | undefined): QualKey {
-  if (!raw) return 'autre'
-  return RAW_TO_KEY[raw.trim().toUpperCase()] ?? 'autre'
+  if (!raw) return 'pas_de_reponse'
+  return RAW_TO_KEY[raw.trim().toUpperCase()] ?? 'pas_de_reponse'
 }
 
 export function mapQualification(raw: string | null | undefined): QualMeta {

@@ -1,7 +1,6 @@
 import type { CallLogEnriched, Lead } from './types'
 import { qualKeyFromRaw, type QualKey } from './qualifications'
-import { computeEligibility } from './eligibility'
-import { computeConfirmedRdvLeads, effectiveQualKey } from './rdv'
+import { effectiveQualKey } from './rdv'
 import { leadGroupKey, hasMetadata, agentLevel } from './lead-key'
 
 // Re-export for backwards compatibility with existing imports
@@ -14,7 +13,7 @@ export interface DirectorKpis {
   answered: number
   answeredPct: number
   cost: number // cents
-  rdvConfirmed: number // distinct leads with qualification → rdv_confirme
+  rdvConfirmed: number // distinct leads with qualification = RDV CONFIRME
   conversionRate: number // rdv / answered (%)
   avgDuration: number // seconds (TMMC)
   callbacks: number // calls with callback scheduled
@@ -32,19 +31,20 @@ export function computeDirectorKpis(
   let callbacks = 0
   let over = 0
 
+  const rdvLeads = new Set<string>()
   for (const c of calls) {
     if (c.answered) answered++
     cost += c.cost ?? 0
     duration += c.duration
     if (c.analysis?.callbackScheduled) callbacks++
     if (c.duration > durationThresholdSec) over++
+    if (effectiveQualKey(c) === 'rdv_confirme') {
+      const k = leadGroupKey(c)
+      if (k) rdvLeads.add(k)
+    }
   }
 
-  // Strict RDV CONFIRMÉ: re-derived from call-level evidence (#1).
-  // Don't trust leads_rdv.qualification === 'RDV MEDECIN' for 3-second calls.
-  const rdvLeadIds = computeConfirmedRdvLeads(calls)
-
-  const rdv = rdvLeadIds.size
+  const rdv = rdvLeads.size
   return {
     totalCalls: total,
     answered,
@@ -78,13 +78,8 @@ export function callsForKpi(
     case 'answered':
       return calls.filter((c) => c.answered)
     case 'rdv':
-    case 'conversion': {
-      const confirmed = computeConfirmedRdvLeads(calls)
-      return calls.filter((c) => {
-        const k = leadGroupKey(c)
-        return !!k && confirmed.has(k)
-      })
-    }
+    case 'conversion':
+      return calls.filter((c) => effectiveQualKey(c) === 'rdv_confirme')
     case 'callbacks':
       return calls.filter((c) => c.analysis?.callbackScheduled)
     case 'over':
@@ -98,52 +93,41 @@ export function callsForKpi(
   }
 }
 
-// ─── Qualification counts (lead-level = source of truth) ────────────────────
+// ─── Qualification counts ───────────────────────────────────────────────────
 
 export interface QualCount {
   key: QualKey
   count: number
 }
 
-// Counts DISTINCT leads (by lead id) among the given calls, by qualification.
-// NON ELIGIBLE is computed from BMI (S2) and overrides only for leads that
-// are otherwise still "open" (not already RDV / not interested / faux numéro).
-// Count calls (not distinct leads) by their final routed qualification.
-// All routing logic lives in effectiveQualKey() — see lib/rdv.ts — so
-// the card counters, slide-over filtering and per-row badges always
-// agree on which bucket a call belongs to.
+// Counts CALLS (not distinct leads) by Supabase qualification. Every
+// call lives in exactly one card — Σ counts = calls.length — because
+// qualKeyFromRaw routes unknown / missing values to 'pas_de_reponse'.
 export function computeQualificationCounts(
-  calls: CallLogEnriched[]
+  calls: CallLogEnriched[],
+  confirmedRdvLeadKeys: Set<string> = new Set()
 ): Record<QualKey, number> {
   const counts: Record<QualKey, number> = {
     rdv_confirme: 0,
-    rdv_non_confirme: 0,
     a_passer_a_humain: 0,
     rappel: 0,
     pas_interesse: 0,
     pas_de_reponse: 0,
     repondeur: 0,
     faux_numero: 0,
-    nouveau_dossier: 0,
     non_eligible: 0,
     ne_pas_rappeler: 0,
-    autre: 0,
   }
-  const confirmed = computeConfirmedRdvLeads(calls)
-  for (const c of calls) {
-    counts[effectiveQualKey(c, confirmed)]++
-  }
+  for (const c of calls) counts[effectiveQualKey(c, confirmedRdvLeadKeys)]++
   return counts
 }
 
-// Mirror of computeQualificationCounts at the call level via the shared
-// effectiveQualKey() routing.
 export function callsForQualification(
   calls: CallLogEnriched[],
-  key: QualKey
+  key: QualKey,
+  confirmedRdvLeadKeys: Set<string> = new Set()
 ): CallLogEnriched[] {
-  const confirmed = computeConfirmedRdvLeads(calls)
-  return calls.filter((c) => effectiveQualKey(c, confirmed) === key)
+  return calls.filter((c) => effectiveQualKey(c, confirmedRdvLeadKeys) === key)
 }
 
 // ─── Phase J1 / J3 / J5 tracking ────────────────────────────────────────────
@@ -185,9 +169,6 @@ export function computePhaseTracking(calls: CallLogEnriched[]): PhaseTracking {
 }
 
 // ─── Agent chain buckets (Agent 1 only / 1+2 / 1+2+3) ───────────────────────
-
-// agentLevel + leadGroupKey moved to lib/lead-key.ts to avoid a circular
-// import with lib/rdv.ts. Re-exported above for backward compatibility.
 
 export interface AgentBuckets {
   agent1Only: number
@@ -244,6 +225,10 @@ export function callsForAgentBucket(
 }
 
 // ─── Dossiers à confier à un humain ─────────────────────────────────────────
+//
+// Pure Supabase view: a candidate is any lead whose qualification is
+// "À PASSER À L'HUMAIN". No Retell-derived signals, no duration filter
+// — the source of truth is the CRM tag set by n8n / the team.
 
 export interface HandoffCandidate {
   leadId: string
@@ -258,15 +243,13 @@ export interface HandoffCandidate {
   attempts: number
 }
 
-// Difficult leads: eligible but not converted, robot-awareness detected,
-// or several failed attempts without reaching the prospect.
 export function computeHandoffCandidates(
   calls: CallLogEnriched[],
-  leads: Lead[]
+  _leads: Lead[]
 ): HandoffCandidate[] {
-  const leadById = new Map(leads.map((l) => [l.id, l]))
   const byLead = new Map<string, CallLogEnriched[]>()
   for (const c of calls) {
+    if (qualKeyFromRaw(c.lead?.qualification) !== 'a_passer_a_humain') continue
     const k = leadKey(c)
     if (!k) continue
     if (!byLead.has(k)) byLead.set(k, [])
@@ -280,43 +263,12 @@ export function computeHandoffCandidates(
     )
     const latest = sorted[0]
     const lead = latest.lead
-    const fullLead = leadById.get(lead?.id ?? '') ?? null
-    const reasons: string[] = []
-
-    const qual = qualKeyFromRaw(lead?.qualification)
-    const elig = lead
-      ? computeEligibility({
-          bmi: lead.bmi,
-          nhs_wmp_status: fullLead?.nhs_wmp_status ?? null,
-          nhs_wmp_details: fullLead?.nhs_wmp_details ?? null,
-          other_chronic_conditions: fullLead?.other_chronic_conditions ?? null,
-          current_medications: fullLead?.current_medications ?? null,
-          note: fullLead?.note ?? null,
-          allergies: fullLead?.allergies ?? null,
-        })
-      : null
-
-    if (elig?.eligible && qual !== 'rdv_confirme' && qual !== 'pas_interesse') {
-      reasons.push('Éligible mais pas allé au bout')
-    }
-    if (list.some((c) => c.robotAwareness === true)) {
-      reasons.push('Robot awareness détecté')
-    }
-    const failed = list.filter((c) => !c.answered).length
-    if (failed >= 3 && qual !== 'rdv_confirme') {
-      reasons.push(`${failed} tentatives sans réponse`)
-    }
-    if (list.some((c) => c.analysis?.humanTransferTriggered)) {
-      reasons.push('Transfert humain déclenché')
-    }
-
-    if (reasons.length === 0) continue
     out.push({
       leadId: lead?.id ?? k,
       name: lead?.nom ?? null,
       phone: lead?.numero_telephone ?? latest.toNumber ?? null,
       email: lead?.email ?? null,
-      reasons,
+      reasons: ['Tag CRM : À passer à l\'humain'],
       bmi: lead?.bmi ?? null,
       source: lead?.source_lead ?? null,
       qualification: lead?.qualification ?? null,
@@ -324,5 +276,7 @@ export function computeHandoffCandidates(
       attempts: list.length,
     })
   }
-  return out.sort((a, b) => b.reasons.length - a.reasons.length)
+  return out.sort(
+    (a, b) => new Date(b.lastCall).getTime() - new Date(a.lastCall).getTime()
+  )
 }

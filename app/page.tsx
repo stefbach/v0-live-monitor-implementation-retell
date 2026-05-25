@@ -42,7 +42,6 @@ export default function DashboardPage() {
     agentNames,
     callMetrics,
     businessMetrics,
-    confirmedRdvLeadKeys,
     isLoading,
     refresh,
   } = useDashboardData()
@@ -92,7 +91,6 @@ export default function DashboardPage() {
                 allCalls={allCalls}
                 leads={leads}
                 isLoading={isLoading}
-                confirmedRdvLeadKeys={confirmedRdvLeadKeys}
                 onSelectCall={handleCallSelect}
               />
             </TabsContent>
@@ -103,23 +101,22 @@ export default function DashboardPage() {
 
             <TabsContent value="stats" className="mt-6 space-y-6">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">📊 Statistiques</h2>
+                <h2 className="text-lg font-semibold">📊 {t('tab.stats')}</h2>
                 <ReportButton allCalls={allCalls} leads={leads} />
               </div>
+
               <BusinessKpis
                 metrics={callMetrics}
                 business={businessMetrics}
                 filteredCalls={filteredCalls}
                 allCalls={allCalls}
                 leads={leads}
-                confirmedRdvLeadKeys={confirmedRdvLeadKeys}
                 onSelectCall={handleCallSelect}
                 isLoading={isLoading}
               />
 
               <CallHeatmap
                 calls={filteredCalls}
-                confirmedRdvLeadKeys={confirmedRdvLeadKeys}
                 onSelectCall={handleCallSelect}
                 isLoading={isLoading}
               />
@@ -158,7 +155,6 @@ export default function DashboardPage() {
 
               <AgentPerformance
                 filteredCalls={filteredCalls}
-                confirmedRdvLeadKeys={confirmedRdvLeadKeys}
                 isLoading={isLoading}
               />
 
@@ -169,7 +165,7 @@ export default function DashboardPage() {
               />
             </TabsContent>
 
-            <TabsContent value="insights" className="mt-6">
+            <TabsContent value="insights" className="mt-6 space-y-6">
               <InsightsPanel filteredCalls={filteredCalls} />
             </TabsContent>
 
@@ -178,7 +174,6 @@ export default function DashboardPage() {
               <CallLogsTable
                 calls={filteredCalls}
                 isLoading={isLoading}
-                confirmedRdvLeadKeys={confirmedRdvLeadKeys}
                 onCallSelect={handleCallSelect}
               />
             </TabsContent>
@@ -196,7 +191,6 @@ export default function DashboardPage() {
                 allCalls={allCalls}
                 leads={leads}
                 isLoading={isLoading}
-                confirmedRdvLeadKeys={confirmedRdvLeadKeys}
                 onSelectCall={handleCallSelect}
               />
             )}
@@ -211,13 +205,11 @@ export default function DashboardPage() {
                   filteredCalls={filteredCalls}
                   allCalls={allCalls}
                   leads={leads}
-                  confirmedRdvLeadKeys={confirmedRdvLeadKeys}
                   onSelectCall={handleCallSelect}
                   isLoading={isLoading}
                 />
                 <CallHeatmap
                 calls={filteredCalls}
-                confirmedRdvLeadKeys={confirmedRdvLeadKeys}
                 onSelectCall={handleCallSelect}
                 isLoading={isLoading}
               />
@@ -247,7 +239,6 @@ export default function DashboardPage() {
                 <EligibilityPipeline leads={leads} isLoading={isLoading} />
                 <AgentPerformance
                   filteredCalls={filteredCalls}
-                  confirmedRdvLeadKeys={confirmedRdvLeadKeys}
                   isLoading={isLoading}
                 />
                 <StatsExtras
@@ -258,7 +249,11 @@ export default function DashboardPage() {
               </>
             )}
 
-            {activeTab === 'insights' && <InsightsPanel filteredCalls={filteredCalls} />}
+            {activeTab === 'insights' && (
+              <div className="space-y-6">
+                <InsightsPanel filteredCalls={filteredCalls} />
+              </div>
+            )}
 
             {activeTab === 'calls' && (
               <div className="space-y-4">
@@ -266,7 +261,6 @@ export default function DashboardPage() {
                 <CallLogsTable
                   calls={filteredCalls}
                   isLoading={isLoading}
-                  confirmedRdvLeadKeys={confirmedRdvLeadKeys}
                   onCallSelect={handleCallSelect}
                 />
               </div>
@@ -284,7 +278,6 @@ export default function DashboardPage() {
         open={isSheetOpen}
         onOpenChange={setIsSheetOpen}
         allCalls={allCalls}
-        confirmedRdvLeadKeys={confirmedRdvLeadKeys}
         onSelectCall={handleCallSelect}
       />
     </div>

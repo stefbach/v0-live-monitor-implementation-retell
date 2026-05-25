@@ -25,6 +25,7 @@ import { ReportButton } from '../report-button'
 import { HandoffDetailSheet } from './handoff-detail-sheet'
 import { DurationHistogram } from '../duration-histogram'
 import { VerbatimPanel } from '../verbatim-panel'
+import { InboundCallsPanel } from '../inbound-calls-panel'
 import { useT } from '@/lib/hooks/use-t'
 import { formatBmi } from '@/lib/bmi'
 import {
@@ -40,6 +41,7 @@ import {
 } from '@/lib/director-metrics'
 import { QUAL_META, QUALIFICATION_CARDS, type QualKey } from '@/lib/qualifications'
 import { useFiltersStore } from '@/lib/stores/filters-store'
+import { useRdvStore } from '@/lib/stores/rdv-store'
 import { PERIODS } from '@/lib/filters'
 import type { CallLogEnriched, Lead } from '@/lib/types'
 
@@ -48,7 +50,6 @@ interface Props {
   allCalls: CallLogEnriched[]
   leads: Lead[]
   isLoading: boolean
-  confirmedRdvLeadKeys: Set<string>
   onSelectCall: (call: CallLogEnriched) => void
 }
 
@@ -64,12 +65,12 @@ export function DirectorView({
   allCalls,
   leads,
   isLoading,
-  confirmedRdvLeadKeys,
   onSelectCall,
 }: Props) {
   const { t } = useT()
   const period = useFiltersStore((s) => s.filters.period)
   const periodLabel = PERIODS.find((p) => p.id === period)?.label ?? period
+  const confirmedRdvLeadKeys = useRdvStore((s) => s.confirmedRdvLeadKeys)
   const [threshold, setThreshold] = useState(60)
 
   const [panel, setPanel] = useState<{
@@ -88,8 +89,8 @@ export function DirectorView({
     [filteredCalls, threshold]
   )
   const qualCounts = useMemo(
-    () => computeQualificationCounts(filteredCalls),
-    [filteredCalls]
+    () => computeQualificationCounts(filteredCalls, confirmedRdvLeadKeys),
+    [filteredCalls, confirmedRdvLeadKeys]
   )
   const phase = useMemo(() => computePhaseTracking(filteredCalls), [filteredCalls])
   const agents = useMemo(() => computeAgentBuckets(filteredCalls), [filteredCalls])
@@ -104,7 +105,7 @@ export function DirectorView({
   const openQual = (key: QualKey, title: string) =>
     setPanel({
       title,
-      calls: callsForQualification(filteredCalls, key),
+      calls: callsForQualification(filteredCalls, key, confirmedRdvLeadKeys),
       // The RAPPEL card surfaces leads_rdv.rappel_rdv per row.
       rappelDate: key === 'rappel',
       // "À passer à l'humain" surfaces the call summary so the operator
@@ -133,14 +134,14 @@ export function DirectorView({
     color: string
     highlight?: boolean
   }[] = [
-    { id: 'total', label: 'Total appels', value: kpis.totalCalls.toLocaleString(), icon: Phone, color: 'bg-blue-500/10 text-blue-500' },
-    { id: 'answered', label: 'Décrochés', value: `${kpis.answered.toLocaleString()} · ${kpis.answeredPct.toFixed(0)}%`, icon: PhoneCall, color: 'bg-emerald-500/10 text-emerald-500' },
-    { id: 'cost', label: 'Coût consommé', value: fmtUsd(kpis.cost), icon: DollarSign, color: 'bg-amber-500/10 text-amber-500' },
-    { id: 'rdv', label: 'RDV confirmés', value: kpis.rdvConfirmed.toLocaleString(), icon: CalendarCheck, color: 'bg-emerald-500/10 text-emerald-500', highlight: true },
-    { id: 'conversion', label: 'Taux de conversion', value: `${kpis.conversionRate.toFixed(1)}%`, icon: TrendingUp, color: 'bg-violet-500/10 text-violet-500' },
-    { id: 'avg', label: 'Durée moyenne (TMMC)', value: fmtDur(kpis.avgDuration), icon: Clock, color: 'bg-cyan-500/10 text-cyan-500' },
-    { id: 'callbacks', label: 'Callbacks demandés', value: kpis.callbacks.toLocaleString(), icon: RotateCcw, color: 'bg-orange-500/10 text-orange-400' },
-    { id: 'over', label: `Appels > ${threshold}s`, value: kpis.callsOverThreshold.toLocaleString(), icon: Timer, color: 'bg-zinc-500/10 text-zinc-400' },
+    { id: 'total', label: t('director.totalCalls'), value: kpis.totalCalls.toLocaleString(), icon: Phone, color: 'bg-blue-500/10 text-blue-500' },
+    { id: 'answered', label: t('director.answered'), value: `${kpis.answered.toLocaleString()} · ${kpis.answeredPct.toFixed(0)}%`, icon: PhoneCall, color: 'bg-emerald-500/10 text-emerald-500' },
+    { id: 'cost', label: t('director.costConsumed'), value: fmtUsd(kpis.cost), icon: DollarSign, color: 'bg-amber-500/10 text-amber-500' },
+    { id: 'rdv', label: t('director.rdvConfirmed'), value: kpis.rdvConfirmed.toLocaleString(), icon: CalendarCheck, color: 'bg-emerald-500/10 text-emerald-500', highlight: true },
+    { id: 'conversion', label: t('director.conversion'), value: `${kpis.conversionRate.toFixed(1)}%`, icon: TrendingUp, color: 'bg-violet-500/10 text-violet-500' },
+    { id: 'avg', label: t('director.avgDuration'), value: fmtDur(kpis.avgDuration), icon: Clock, color: 'bg-cyan-500/10 text-cyan-500' },
+    { id: 'callbacks', label: t('director.callbacks'), value: kpis.callbacks.toLocaleString(), icon: RotateCcw, color: 'bg-orange-500/10 text-orange-400' },
+    { id: 'over', label: `${t('logs.col.duration')} > ${threshold}s`, value: kpis.callsOverThreshold.toLocaleString(), icon: Timer, color: 'bg-zinc-500/10 text-zinc-400' },
   ]
 
   return (
@@ -150,8 +151,8 @@ export function DirectorView({
         <div>
           <h2 className="text-lg font-semibold">{t('director.title')}</h2>
           <p className="text-sm text-muted-foreground">
-            Période : <span className="font-medium">{periodLabel}</span> ·{' '}
-            {filteredCalls.length.toLocaleString()} appels
+            {t('common.period')} : <span className="font-medium">{periodLabel}</span> ·{' '}
+            {filteredCalls.length.toLocaleString()} {t('common.calls')}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -190,7 +191,7 @@ export function DirectorView({
       {/* Threshold control for the "> Xs" KPI */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Timer className="h-4 w-4" />
-        Seuil « appels longs » :
+        {t('director.thresholdLabel')}
         <Input
           type="number"
           value={threshold}
@@ -198,7 +199,7 @@ export function DirectorView({
           onChange={(e) => setThreshold(Math.max(1, Number(e.target.value) || 1))}
           className="h-8 w-24"
         />
-        secondes
+        {t('director.thresholdUnit')}
         <span className="ml-1 flex gap-1">
           {[60, 120, 180, 300, 600].map((s) => (
             <button
@@ -216,6 +217,50 @@ export function DirectorView({
         </span>
       </div>
 
+      {/* Totals consistency banner: Σ cards = total */}
+      <Card className="border-dashed">
+        <CardContent className="flex flex-wrap items-center justify-between gap-4 py-3 text-sm">
+          <div className="flex flex-wrap items-center gap-4">
+            <span>
+              <span className="text-muted-foreground">{t('director.totals.total')} :</span>{' '}
+              <span className="font-bold tabular-nums">
+                {kpis.totalCalls.toLocaleString()}
+              </span>
+            </span>
+            <span>
+              <span className="text-muted-foreground">{t('director.totals.answered')} :</span>{' '}
+              <span className="font-semibold tabular-nums text-emerald-500">
+                {kpis.answered.toLocaleString()}
+              </span>
+            </span>
+            <span>
+              <span className="text-muted-foreground">{t('director.totals.notAnswered')} :</span>{' '}
+              <span className="font-semibold tabular-nums text-zinc-400">
+                {(kpis.totalCalls - kpis.answered).toLocaleString()}
+              </span>
+            </span>
+          </div>
+          {(() => {
+            const sum = QUALIFICATION_CARDS.reduce(
+              (s, k) => s + (qualCounts[k] ?? 0),
+              0
+            )
+            const ok = sum === kpis.totalCalls
+            return (
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                  ok
+                    ? 'bg-emerald-500/10 text-emerald-500'
+                    : 'bg-red-500/10 text-red-500'
+                }`}
+              >
+                Σ cards = {sum.toLocaleString()} {ok ? '✓' : '⚠'}
+              </span>
+            )
+          })()}
+        </CardContent>
+      </Card>
+
       {/* Qualification cards */}
       <Card>
         <CardHeader className="pb-2">
@@ -223,19 +268,21 @@ export function DirectorView({
             <div>
               <CardTitle className="text-base">{t('director.qualifications')}</CardTitle>
               <CardDescription>
-                État CRM actuel des leads · clique une card pour voir les appels
+                {t('director.qualifications.desc')}
               </CardDescription>
             </div>
             <div className="text-right">
               <p className="text-2xl font-bold tabular-nums">
                 {filteredCalls.length.toLocaleString()}
               </p>
-              <p className="text-[11px] text-muted-foreground">appels Retell</p>
+              <p className="text-[11px] text-muted-foreground">
+                {t('director.callsLabel')}
+              </p>
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {QUALIFICATION_CARDS.map((key) => {
               const meta = QUAL_META[key]
               const count = qualCounts[key] ?? 0
@@ -246,7 +293,10 @@ export function DirectorView({
                   className={`rounded-lg border border-l-4 bg-card p-4 text-left transition-shadow hover:shadow-md ${meta.cardAccent}`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className={`h-2.5 w-2.5 rounded-sm ${meta.dotClass}`} />
+                    <span
+                      className="h-2.5 w-2.5 rounded-sm"
+                      style={{ backgroundColor: meta.hex }}
+                    />
                     <span className="text-2xl font-bold tabular-nums">
                       {count.toLocaleString()}
                     </span>
@@ -259,12 +309,19 @@ export function DirectorView({
         </CardContent>
       </Card>
 
+      {/* Appels entrants */}
+      <InboundCallsPanel
+        calls={filteredCalls}
+        onSelectCall={onSelectCall}
+        isLoading={isLoading}
+      />
+
       {/* Phase tracking + Agents */}
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Suivi J1 / J3 / J5</CardTitle>
-            <CardDescription>Volume par phase et par créneau d&apos;appel UK</CardDescription>
+            <CardTitle className="text-base">{t('director.phaseTracking')}</CardTitle>
+            <CardDescription>{t('director.phase.desc')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -277,7 +334,7 @@ export function DirectorView({
                       <div className="flex justify-between text-sm">
                         <span className="font-medium">{p.phase}</span>
                         <span className="font-mono text-muted-foreground">
-                          {p.leads.toLocaleString()} leads · {p.calls.toLocaleString()} appels
+                          {p.leads.toLocaleString()} {t('director.phase.leads')} · {p.calls.toLocaleString()} {t('common.calls')}
                         </span>
                       </div>
                       <div className="h-2.5 overflow-hidden rounded bg-muted">
@@ -292,7 +349,7 @@ export function DirectorView({
             </div>
             <div className="border-t pt-3">
               <p className="mb-2 text-xs uppercase tracking-wide text-muted-foreground">
-                Par créneau
+                {t('director.phase.bySlot')}
               </p>
               <div className="grid grid-cols-2 gap-2">
                 {phase.creneaux.map((c) => (
@@ -312,17 +369,17 @@ export function DirectorView({
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
-              <Users className="h-4 w-4 text-cyan-500" /> Chaîne d&apos;agents
+              <Users className="h-4 w-4 text-cyan-500" /> {t('director.agentChain')}
             </CardTitle>
             <CardDescription>
-              Combien de leads sont passés sur 1, 2 ou 3 agents
+              {t('director.agentChain.desc')}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {[
-              { label: 'Agent 1 uniquement (Charlotte)', value: agents.agent1Only, bucket: 'a1' as const },
-              { label: 'Agent 1 + 2 (→ Isabelle)', value: agents.agent1And2, bucket: 'a12' as const },
-              { label: 'Agent 1 + 2 + 3 (→ Victoria)', value: agents.agent1And2And3, bucket: 'a123' as const },
+              { label: t('director.agentChain.a1'), value: agents.agent1Only, bucket: 'a1' as const },
+              { label: t('director.agentChain.a12'), value: agents.agent1And2, bucket: 'a12' as const },
+              { label: t('director.agentChain.a123'), value: agents.agent1And2And3, bucket: 'a123' as const },
             ].map((row) => (
               <button
                 key={row.bucket}
@@ -347,10 +404,8 @@ export function DirectorView({
       {/* #8 — Analyse des appels (fusion Duration + Verbatims) */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Analyse des appels</CardTitle>
-          <CardDescription>
-            Distribution des durées (à gauche) · ce qu&apos;ils ont dit (à droite)
-          </CardDescription>
+          <CardTitle className="text-base">{t('director.analysisTitle')}</CardTitle>
+          <CardDescription>{t('director.analysisDesc')}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 lg:grid-cols-2">
@@ -369,7 +424,6 @@ export function DirectorView({
       <HandoffDetailSheet
         candidate={handoffPanel}
         allCalls={allCalls}
-        confirmedRdvLeadKeys={confirmedRdvLeadKeys}
         open={!!handoffPanel}
         onOpenChange={(o) => !o && setHandoffPanel(null)}
       />
@@ -383,7 +437,6 @@ export function DirectorView({
         showRaw={panel?.raw}
         showRappelDate={panel?.rappelDate}
         showSummary={panel?.summary}
-        confirmedRdvLeadKeys={confirmedRdvLeadKeys}
         onSelectCall={(c) => {
           setPanel(null)
           onSelectCall(c)
@@ -402,6 +455,7 @@ function HandoffSection({
   candidates: ReturnType<typeof computeHandoffCandidates>
   onOpenDetail: (c: ReturnType<typeof computeHandoffCandidates>[number]) => void
 }) {
+  const { t } = useT()
   const [busy, setBusy] = useState<string | null>(null)
   const [done, setDone] = useState<Record<string, string>>({})
 
@@ -424,16 +478,16 @@ function HandoffSection({
       <CardHeader className="pb-2">
         <CardTitle className="text-base flex items-center gap-2">
           <UserPlus className="h-4 w-4 text-violet-500" />
-          Dossiers à confier à un humain
+          {t('director.handoff')}
         </CardTitle>
         <CardDescription>
-          Leads difficiles : éligible non abouti, robot awareness, tentatives échouées
+          {t('director.handoff.desc')}
         </CardDescription>
       </CardHeader>
       <CardContent>
         {candidates.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">
-            Aucun dossier à confier sur cette période. 👍
+            {t('director.handoff.empty')}
           </p>
         ) : (
           <div className="space-y-2">
@@ -447,7 +501,7 @@ function HandoffSection({
                 >
                   <div className="min-w-0">
                     <p className="text-sm font-medium">
-                      {c.name ?? 'Inconnu'}{' '}
+                      {c.name ?? t('director.handoff.unknown')}{' '}
                       <span className="font-mono text-xs text-muted-foreground">
                         {c.phone ?? ''}
                       </span>
@@ -467,7 +521,7 @@ function HandoffSection({
                   </div>
                   {done[c.leadId] ? (
                     <Badge className="bg-emerald-500 text-white">
-                      Assigné à {done[c.leadId]}
+                      {t('director.assign.assigned').replace('{to}', done[c.leadId])}
                     </Badge>
                   ) : (
                     <div
@@ -483,7 +537,7 @@ function HandoffSection({
                         {busy === c.leadId + 'Rain' && (
                           <Loader2 className="mr-1 h-3 w-3 animate-spin" />
                         )}
-                        Assigner à Rain
+                        {t('director.assign.rain')}
                       </Button>
                       <Button
                         size="sm"
@@ -494,7 +548,7 @@ function HandoffSection({
                         {busy === c.leadId + 'Summer' && (
                           <Loader2 className="mr-1 h-3 w-3 animate-spin" />
                         )}
-                        Assigner à Summer
+                        {t('director.assign.summer')}
                       </Button>
                     </div>
                   )}
@@ -503,7 +557,7 @@ function HandoffSection({
             })}
             {candidates.length > 25 && (
               <p className="pt-1 text-center text-xs text-muted-foreground">
-                + {candidates.length - 25} autres dossiers
+                {t('director.othersMore').replace('{n}', String(candidates.length - 25))}
               </p>
             )}
           </div>

@@ -5,6 +5,7 @@ import { TrendingUp, Repeat } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { computeAttemptStats } from '@/lib/analytics'
+import { useRdvStore } from '@/lib/stores/rdv-store'
 import type { CallLogEnriched } from '@/lib/types'
 
 interface Props {
@@ -13,7 +14,11 @@ interface Props {
 }
 
 export function AttemptFunnel({ calls, isLoading }: Props) {
-  const stats = useMemo(() => computeAttemptStats(calls), [calls])
+  const confirmedRdvLeadKeys = useRdvStore((s) => s.confirmedRdvLeadKeys)
+  const stats = useMemo(
+    () => computeAttemptStats(calls, confirmedRdvLeadKeys),
+    [calls, confirmedRdvLeadKeys]
+  )
 
   if (isLoading) {
     return (

@@ -14,6 +14,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { computeCostByHour, computeCostByOutcome } from '@/lib/analytics'
 import { periodRange, previousPeriodRange } from '@/lib/filters'
 import { useFiltersStore } from '@/lib/stores/filters-store'
+import { useRdvStore } from '@/lib/stores/rdv-store'
+import { effectiveQualKey } from '@/lib/rdv'
 import type { CallLogEnriched } from '@/lib/types'
 
 interface Props {
@@ -44,13 +46,17 @@ const QUALIF_COLOR: Record<string, string> = {
 
 export function CostAdvanced({ allCalls, filteredCalls, isLoading }: Props) {
   const filters = useFiltersStore((s) => s.filters)
+  const confirmedRdvLeadKeys = useRdvStore((s) => s.confirmedRdvLeadKeys)
 
   const summary = useMemo(() => {
     const totalCost = filteredCalls.reduce((s, c) => s + (c.cost ?? 0), 0)
-    const rdvCalls = filteredCalls.filter((c) => c.lead?.qualification === 'RDV MEDECIN').length
-    const wastedCalls = filteredCalls.filter(
-      (c) => c.lead?.qualification === 'FAUX NUMERO' || c.lead?.qualification === 'PAS DE REPONSE'
-    )
+    const rdvCalls = filteredCalls.filter(
+      (c) => effectiveQualKey(c, confirmedRdvLeadKeys) === 'rdv_confirme'
+    ).length
+    const wastedCalls = filteredCalls.filter((c) => {
+      const q = effectiveQualKey(c, confirmedRdvLeadKeys)
+      return q === 'faux_numero' || q === 'pas_de_reponse'
+    })
     const wastedCost = wastedCalls.reduce((s, c) => s + (c.cost ?? 0), 0)
     return {
       totalCost,
@@ -59,7 +65,7 @@ export function CostAdvanced({ allCalls, filteredCalls, isLoading }: Props) {
       wastedCost,
       wastedRatio: totalCost > 0 ? (wastedCost / totalCost) * 100 : 0,
     }
-  }, [filteredCalls])
+  }, [filteredCalls, confirmedRdvLeadKeys])
 
   const prevSummary = useMemo(() => {
     const prev = previousPeriodRange(filters.period, filters.customStart, filters.customEnd)
@@ -98,7 +104,10 @@ export function CostAdvanced({ allCalls, filteredCalls, isLoading }: Props) {
   }, [filteredCalls])
 
   const byHour = useMemo(() => computeCostByHour(filteredCalls), [filteredCalls])
-  const byOutcome = useMemo(() => computeCostByOutcome(filteredCalls), [filteredCalls])
+  const byOutcome = useMemo(
+    () => computeCostByOutcome(filteredCalls, confirmedRdvLeadKeys),
+    [filteredCalls, confirmedRdvLeadKeys]
+  )
 
   if (isLoading) {
     return (

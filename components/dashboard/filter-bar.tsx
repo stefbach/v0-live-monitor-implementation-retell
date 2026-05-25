@@ -1,9 +1,11 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Search, X, ChevronDown, RotateCcw } from 'lucide-react'
+import { Search, X, ChevronDown, RotateCcw, CalendarRange, Check } from 'lucide-react'
+import { type DateRange } from 'react-day-picker'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Calendar } from '@/components/ui/calendar'
 import { Input } from '@/components/ui/input'
 import {
   Popover,
@@ -167,22 +169,125 @@ export function FilterBar({ calls, agentNames }: FilterBarProps) {
 function PeriodSelector() {
   const { t } = useT()
   const period = useFiltersStore((s) => s.filters.period)
+  const customStart = useFiltersStore((s) => s.filters.customStart)
+  const customEnd = useFiltersStore((s) => s.filters.customEnd)
   const patch = useFiltersStore((s) => s.patch)
+  const [open, setOpen] = useState(false)
+
+  // Local range state — committed to store only when both dates are picked.
+  const [range, setRange] = useState<DateRange | undefined>(
+    customStart && customEnd
+      ? { from: new Date(customStart), to: new Date(customEnd) }
+      : undefined
+  )
+
+  const handleRangeSelect = (r: DateRange | undefined) => {
+    setRange(r)
+    if (r?.from && r?.to) {
+      // Set end-of-day for the "to" date so the full day is included.
+      const end = new Date(r.to)
+      end.setHours(23, 59, 59, 999)
+      patch({
+        period: 'custom',
+        customStart: r.from.toISOString(),
+        customEnd: end.toISOString(),
+      })
+      setOpen(false)
+    }
+  }
+
+  const handleClear = () => {
+    setRange(undefined)
+    patch({ period: '7d', customStart: null, customEnd: null })
+    setOpen(false)
+  }
+
+  const hasCustomRange = period === 'custom' && !!customStart && !!customEnd
+
+  const customLabel = (() => {
+    if (period !== 'custom' || !customStart || !customEnd) return t('period.custom')
+    const fmt = (iso: string) =>
+      new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
+    return `${fmt(customStart)} – ${fmt(customEnd)}`
+  })()
+
+  // Human-readable label for the active period shown outside the pill bar
+  const activePeriodLabel = (() => {
+    if (period === 'custom') return customLabel
+    const found = PERIODS.find((p) => p.id === period)
+    return found ? t(`period.${found.id}`) : ''
+  })()
+
   return (
-    <div className="flex items-center gap-1 rounded-md border bg-background p-0.5">
-      {PERIODS.filter((p) => p.id !== 'custom').map((p) => (
-        <button
-          key={p.id}
-          onClick={() => patch({ period: p.id })}
-          className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
-            period === p.id
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          {t(`period.${p.id}`)}
-        </button>
-      ))}
+    <div className="flex flex-col gap-1">
+      {/* Active period badge — always visible */}
+      <div className="flex items-center gap-1.5">
+        <span className="text-xs text-muted-foreground">{t('period.label')}</span>
+        <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary ring-1 ring-primary/30">
+          <Check className="h-3 w-3" />
+          {activePeriodLabel}
+        </span>
+      </div>
+
+      <div className="flex items-center gap-1 rounded-md border bg-background p-0.5">
+        {PERIODS.filter((p) => p.id !== 'custom').map((p) => (
+          <button
+            key={p.id}
+            onClick={() => patch({ period: p.id })}
+            className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+              period === p.id
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {t(`period.${p.id}`)}
+          </button>
+        ))}
+
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button
+            className={`flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+              period === 'custom'
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <CalendarRange className="h-3 w-3" />
+            {customLabel}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start">
+          <Calendar
+            mode="range"
+            selected={range}
+            onSelect={handleRangeSelect}
+            numberOfMonths={2}
+            disabled={{ after: new Date() }}
+            initialFocus
+          />
+          <div className="flex items-center justify-between gap-2 border-t px-3 py-2">
+            <p className="text-xs text-muted-foreground">
+              {range?.from && !range?.to
+                ? 'Sélectionne la date de fin'
+                : hasCustomRange
+                  ? customLabel
+                  : 'Choisis une plage de dates'}
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleClear}
+              disabled={!hasCustomRange && !range?.from}
+              className="h-7 gap-1 text-xs"
+            >
+              <X className="h-3 w-3" />
+              {t('filter.clear')}
+            </Button>
+          </div>
+        </PopoverContent>
+      </Popover>
+      </div>
     </div>
   )
 }

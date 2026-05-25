@@ -2,21 +2,20 @@ import type { CallLogEnriched } from './types'
 import { leadGroupKey, agentLevel } from './lead-key'
 import { qualKeyFromRaw, type QualKey } from './qualifications'
 
-// Strict definition of "RDV confirmé", agreed with the user (#1).
+// ─── Strict RDV CONFIRME criteria (agreed with user) ────────────────────────
 //
-// A call qualifies as RDV confirmé on its own if:
-//   - custom_analysis_data.call_outcome === "consultation_booked"
-//     (regardless of duration), OR
-//   - call_outcome === "rdv_confirmed" (or "rdv_confirme") AND duration ≥ 60s
+// A call qualifies RDV CONFIRME on its own when:
+//   1. call_outcome === "consultation_booked"  (any duration), OR
+//   2. call_outcome === "rdv_confirmed" | "rdv_confirme"  AND duration ≥ 60s
 //
-// In addition, a LEAD is RDV confirmé when one of its earlier calls had
-// transfer_to_isabelle === true AND duration ≥ 60s AND a later sibling
-// call exists on the same lead with an Isabelle (Agent 2) or Victoria
-// (Agent 3) — proving the handoff actually went through.
+// A LEAD is RDV CONFIRME when one of its calls had:
+//   3. transfer_to_isabelle === true AND duration ≥ 60s AND a later sibling
+//      call by Isabelle (Agent 2) or Victoria (Agent 3) exists on the same
+//      lead chain — proving the handoff actually completed.
 //
-// The intent: never count 3-second "RDV MEDECIN" calls. The CRM state in
-// leads_rdv.qualification is treated as approximate; we re-derive the
-// truth from call-level evidence.
+// CRM value leads_rdv.qualification is NOT trusted for RDV CONFIRME. All
+// other qualifications are derived from Retell signals first, with Supabase
+// as a fallback only for non-RDV categories.
 
 const POSITIVE_OUTCOMES_ANY_DURATION = new Set(['consultation_booked'])
 const POSITIVE_OUTCOMES_NEED_60S = new Set(['rdv_confirmed', 'rdv_confirme'])
@@ -32,8 +31,6 @@ export function isCallRdvConfirmedAlone(c: CallLogEnriched): boolean {
   return false
 }
 
-// True if this call triggered a transfer AND a later sibling reached
-// Isabelle/Victoria — the lead's RDV is then considered confirmé.
 function transferredAndContinued(
   myCall: CallLogEnriched,
   siblings: CallLogEnriched[]
@@ -57,11 +54,7 @@ export function isLeadRdvConfirmed(siblings: CallLogEnriched[]): boolean {
   )
 }
 
-// Returns the Set of leadGroupKey() values whose calls satisfy the strict
-// RDV criteria across the provided call list.
-export function computeConfirmedRdvLeads(
-  calls: CallLogEnriched[]
-): Set<string> {
+export function computeConfirmedRdvLeads(calls: CallLogEnriched[]): Set<string> {
   const byLead = new Map<string, CallLogEnriched[]>()
   for (const c of calls) {
     const k = leadGroupKey(c)
@@ -76,31 +69,107 @@ export function computeConfirmedRdvLeads(
   return out
 }
 
-// Final bucket for any call. Used by card counters, slide-over filters
-// and per-row badges so the UI stays internally consistent.
+// ─── Call_outcome → QualKey mapping (Retell signals) ────────────────────────
 //
-// Source of truth = leads_rdv.qualification (Supabase). The only piece
-// of Retell-derived logic kept is the strict RDV CONFIRMÉ check (#1):
-// a lead the CRM marks "RDV MEDECIN" but whose calls don't satisfy
-// the criteria of computeConfirmedRdvLeads (consultation_booked /
-// rdv_confirmed ≥60s / handoff to Isabelle ≥60s + reached Victoria) is
-// downgraded to 'rdv_non_confirme' so the RDV CONFIRMÉ card doesn't
-// inflate on short calls.
+// These are the values n8n/Retell AI writes into
+// call_analysis.custom_analysis_data.call_outcome. We normalise to lowercase.
+// RDV-family values are intentionally listed here but overridden by the strict
+// check above so they never reach this map unless the strict check passed.
+
+const OUTCOME_TO_QUAL: Record<string, QualKey> = {
+  // À passer à l'humain
+  'a_passer_a_humain': 'a_passer_a_humain',
+  "à passer à l'humain": 'a_passer_a_humain',
+  'transferred_to_isabelle': 'a_passer_a_humain',
+  'human_handoff': 'a_passer_a_humain',
+  'human_transfer': 'a_passer_a_humain',
+  'transfert_humain': 'a_passer_a_humain',
+
+  // Rappel
+  'rappel': 'rappel',
+  'callback_scheduled': 'rappel',
+  'follow_up': 'rappel',
+  'follow up': 'rappel',
+
+  // Pas intéressé
+  'pas_interesse': 'pas_interesse',
+  'pas intéressé': 'pas_interesse',
+  'not_interested': 'pas_interesse',
+
+  // Pas de réponse
+  'pas_de_reponse': 'pas_de_reponse',
+  'pas de réponse': 'pas_de_reponse',
+  'no_answer': 'pas_de_reponse',
+  'no answer': 'pas_de_reponse',
+  'nouveau_dossier': 'pas_de_reponse',
+  'nouveau dossier': 'pas_de_reponse',
+
+  // Répondeur
+  'repondeur': 'repondeur',
+  'répondeur': 'repondeur',
+  'voicemail': 'repondeur',
+  'in_voicemail': 'repondeur',
+
+  // Faux numéro
+  'faux_numero': 'faux_numero',
+  'faux numéro': 'faux_numero',
+  'wrong_number': 'faux_numero',
+
+  // Non éligible
+  'non_eligible': 'non_eligible',
+  'non éligible': 'non_eligible',
+  'not_eligible': 'non_eligible',
+  'ineligible': 'non_eligible',
+
+  // Ne pas rappeler
+  'ne_pas_rappeler': 'ne_pas_rappeler',
+  'ne pas rappeler': 'ne_pas_rappeler',
+  'do_not_call': 'ne_pas_rappeler',
+  'dnc': 'ne_pas_rappeler',
+}
+
+const EMPTY_SET = new Set<string>()
+
+// ─── Per-call effective qualification ────────────────────────────────────────
 //
-// All other cards (RAPPEL, NON ELIGIBLE, NE PAS RAPPELER, REPONDEUR,
-// PAS DE REPONSE, PAS INTERESSE, FAUX NUMERO, NOUVEAU DOSSIER) read
-// leads_rdv.qualification directly. No NOUVEAU DOSSIER inferred
-// routing, no BMI overlay, no callback_scheduled / call_outcome
-// overrides — n8n Agent 2 is now responsible for proper classification
-// in Supabase.
+// Priority order:
+//  1. Strict per-call RDV CONFIRME signal
+//  2. Lead-level RDV CONFIRME (requires confirmedRdvLeadKeys pre-computed)
+//  3. Voicemail signals (override everything else below)
+//  4. Human handoff signals
+//  5. call_outcome direct mapping
+//  6. Supabase leads_rdv.qualification (fallback, never trusted for RDV)
+//  7. Intelligent re-route when CRM says RDV but strict check failed
+//  8. Default → pas_de_reponse
+
 export function effectiveQualKey(
   c: CallLogEnriched,
-  confirmedRdvLeadKeys: Set<string>
+  confirmedRdvLeadKeys: Set<string> = EMPTY_SET
 ): QualKey {
-  const key = qualKeyFromRaw(c.lead?.qualification)
-  if (key === 'rdv_confirme') {
-    const lk = leadGroupKey(c)
-    if (!lk || !confirmedRdvLeadKeys.has(lk)) return 'rdv_non_confirme'
+  // 1 & 2 — Strict RDV CONFIRME
+  if (isCallRdvConfirmedAlone(c)) return 'rdv_confirme'
+  const lk = leadGroupKey(c)
+  if (lk && confirmedRdvLeadKeys.has(lk)) return 'rdv_confirme'
+
+  // 3 — Voicemail (strongest non-RDV signal)
+  if (c.inVoicemail || c.voicemailSuspected) return 'repondeur'
+
+  // 4 — Human handoff intent (transfer fired but strict RDV not met)
+  if (c.analysis?.humanTransferTriggered || c.analysis?.transferToIsabelle) {
+    return 'a_passer_a_humain'
   }
-  return key
+
+  // 5 — Retell call_outcome direct map
+  const outcome = normOutcome(c)
+  const fromOutcome = OUTCOME_TO_QUAL[outcome]
+  if (fromOutcome) return fromOutcome
+
+  // 6 — Supabase fallback (never trust rdv_confirme here alone)
+  const fromCRM = qualKeyFromRaw(c.lead?.qualification)
+  if (fromCRM !== 'rdv_confirme') return fromCRM
+
+  // 7 — CRM says RDV but strict criteria not met → intelligent reroute
+  if (!c.answered || c.duration < 20) return 'pas_de_reponse'
+  if (c.analysis?.transferToIsabelle) return 'a_passer_a_humain'
+  return 'pas_de_reponse'
 }

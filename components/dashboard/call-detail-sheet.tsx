@@ -35,6 +35,7 @@ import { TranscriptViewer } from './transcript-viewer'
 import { useCallDetail } from '@/lib/hooks/use-calls'
 import { agentLevel } from '@/lib/director-metrics'
 import { effectiveQualKey } from '@/lib/rdv'
+import { useRdvStore } from '@/lib/stores/rdv-store'
 import { QUAL_META } from '@/lib/qualifications'
 import { formatBmi } from '@/lib/bmi'
 import { DirectionIcon } from './direction-indicator'
@@ -45,7 +46,6 @@ interface CallDetailSheetProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   allCalls?: CallLogEnriched[]
-  confirmedRdvLeadKeys?: Set<string>
   onSelectCall?: (call: CallLogEnriched) => void
 }
 
@@ -104,11 +104,10 @@ export function CallDetailSheet({
   open,
   onOpenChange,
   allCalls = [],
-  confirmedRdvLeadKeys,
   onSelectCall,
 }: CallDetailSheetProps) {
-  const confirmed = confirmedRdvLeadKeys ?? new Set<string>()
   const { call, isLoading } = useCallDetail(callId)
+  const confirmedRdvLeadKeys = useRdvStore((s) => s.confirmedRdvLeadKeys)
   const fullLead = (call as (CallLogEnriched & { fullLead?: Lead | null }) | null)?.fullLead
   const [audioTime, setAudioTime] = useState(0)
 
@@ -156,7 +155,7 @@ export function CallDetailSheet({
             <div className="flex flex-wrap items-center gap-2">
               {getStatusBadge(call.status)}
               {(() => {
-                const m = QUAL_META[effectiveQualKey(call, confirmed)]
+                const m = QUAL_META[effectiveQualKey(call, confirmedRdvLeadKeys)]
                 return (
                   <Badge variant="outline" className={m.badgeClass}>
                     {m.label}

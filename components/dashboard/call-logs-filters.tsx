@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useFiltersStore } from '@/lib/stores/filters-store'
 import { CRENEAUX } from '@/lib/timezone'
+import { useT } from '@/lib/hooks/use-t'
 import type { CreneauKey, TriState } from '@/lib/types'
 
 const PHASES = ['J1', 'J3', 'J5', 'Inconnu']
@@ -20,6 +21,7 @@ const CRENEAU_KEYS: CreneauKey[] = [
 const DURATION_PRESETS = [60, 120, 180, 300, 600]
 
 export function CallLogsFilters() {
+  const { t } = useT()
   const filters = useFiltersStore((s) => s.filters)
   const patch = useFiltersStore((s) => s.patch)
   const toggleArray = useFiltersStore((s) => s.toggleArray)
@@ -37,7 +39,7 @@ export function CallLogsFilters() {
         {/* Manual duration in seconds */}
         <div className="flex items-center gap-1.5 rounded-md border bg-background px-2 py-1">
           <Timer className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="text-xs text-muted-foreground">Durée &gt;</span>
+          <span className="text-xs text-muted-foreground">{t('logs.filters.durationGT')}</span>
           <Input
             type="number"
             min={0}
@@ -70,14 +72,14 @@ export function CallLogsFilters() {
         </div>
 
         <MultiPill
-          label="Phase"
+          label={t('logs.filters.phase')}
           count={filters.phases?.length ?? 0}
           options={PHASES.map((p) => ({ id: p, label: p }))}
           selected={filters.phases ?? []}
           onToggle={(v) => toggleArray('phases', v)}
         />
         <MultiPill
-          label="Créneau"
+          label={t('logs.filters.creneau')}
           count={filters.creneaux?.length ?? 0}
           options={CRENEAU_KEYS.map((k) => ({ id: k, label: CRENEAUX[k].short }))}
           selected={filters.creneaux ?? []}
@@ -85,7 +87,7 @@ export function CallLogsFilters() {
         />
 
         <TriPill
-          label="Répondu"
+          label={t('common.answered')}
           value={filters.answered === 'answered' ? 'yes' : filters.answered === 'no_answer' ? 'no' : 'all'}
           onChange={(v) =>
             patch({
@@ -94,12 +96,12 @@ export function CallLogsFilters() {
           }
         />
         <TriPill
-          label="Répondeur détecté"
+          label={t('logs.filters.voicemail')}
           value={filters.voicemail}
           onChange={(v) => patch({ voicemail: v })}
         />
         <TriPill
-          label="Robot awareness"
+          label={t('logs.filters.robot')}
           value={filters.robot}
           onChange={(v) => patch({ robot: v })}
         />
@@ -119,7 +121,7 @@ export function CallLogsFilters() {
               })
             }
           >
-            <RotateCcw className="h-3.5 w-3.5" /> Filtres avancés
+            <RotateCcw className="h-3.5 w-3.5" /> {t('logs.filters.advanced')}
             <Badge variant="secondary" className="ml-1 text-xs">
               {advancedActive}
             </Badge>
@@ -185,10 +187,11 @@ function TriPill({
   value: TriState
   onChange: (v: TriState) => void
 }) {
+  const { t } = useT()
   const opts: { id: TriState; label: string }[] = [
-    { id: 'all', label: 'Tous' },
-    { id: 'yes', label: 'Oui' },
-    { id: 'no', label: 'Non' },
+    { id: 'all', label: t('common.all') },
+    { id: 'yes', label: t('common.yes') },
+    { id: 'no', label: t('common.no') },
   ]
   return (
     <div className="flex items-center gap-1 rounded-md border bg-background p-0.5">

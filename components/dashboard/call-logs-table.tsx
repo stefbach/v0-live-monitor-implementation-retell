@@ -22,12 +22,13 @@ import { QUAL_META } from '@/lib/qualifications'
 import { CRENEAUX } from '@/lib/timezone'
 import { agentLevel } from '@/lib/director-metrics'
 import { effectiveQualKey } from '@/lib/rdv'
+import { useRdvStore } from '@/lib/stores/rdv-store'
+import { useT } from '@/lib/hooks/use-t'
 import type { CallLogEnriched } from '@/lib/types'
 
 interface Props {
   calls: CallLogEnriched[]
   isLoading?: boolean
-  confirmedRdvLeadKeys?: Set<string>
   onCallSelect?: (call: CallLogEnriched) => void
 }
 
@@ -48,10 +49,10 @@ function fmtUsd(cents: number | null | undefined): string {
 export function CallLogsTable({
   calls,
   isLoading,
-  confirmedRdvLeadKeys,
   onCallSelect,
 }: Props) {
-  const confirmed = confirmedRdvLeadKeys ?? new Set<string>()
+  const { t } = useT()
+  const confirmedRdvLeadKeys = useRdvStore((s) => s.confirmedRdvLeadKeys)
   const [sortField, setSortField] = useState<SortField>('startTime')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [page, setPage] = useState(0)
@@ -121,9 +122,9 @@ export function CallLogsTable({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Call logs</CardTitle>
+        <CardTitle className="text-base">{t('logs.title')}</CardTitle>
         <CardDescription>
-          {sorted.length.toLocaleString()} appels correspondent aux filtres
+          {t('logs.subtitle').replace('{n}', sorted.length.toLocaleString())}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -131,38 +132,38 @@ export function CallLogsTable({
           <table className="w-full">
             <thead>
               <tr className="border-b text-left text-xs text-muted-foreground">
-                <th className="pb-3 font-medium">Lead</th>
-                <th className="pb-3 font-medium">Numéro</th>
+                <th className="pb-3 font-medium">{t('logs.col.lead')}</th>
+                <th className="pb-3 font-medium">{t('logs.col.phone')}</th>
                 <th className="pb-3 font-medium">
                   <button onClick={() => handleSort('phase')} className="flex items-center gap-1 hover:text-foreground">
-                    Phase / Créneau <SortIcon f="phase" />
+                    {t('logs.col.phaseCreneau')} <SortIcon f="phase" />
                   </button>
                 </th>
-                <th className="pb-3 font-medium">Agent(s)</th>
+                <th className="pb-3 font-medium">{t('logs.col.agents')}</th>
                 <th className="pb-3 font-medium text-right">
                   <button onClick={() => handleSort('duration')} className="ml-auto flex items-center gap-1 hover:text-foreground">
-                    Durée <SortIcon f="duration" />
+                    {t('logs.col.duration')} <SortIcon f="duration" />
                   </button>
                 </th>
-                <th className="pb-3 font-medium">Qualification</th>
-                <th className="pb-3 font-medium text-center">Répondu</th>
+                <th className="pb-3 font-medium">{t('logs.col.qualification')}</th>
+                <th className="pb-3 font-medium text-center">{t('logs.col.answered')}</th>
                 <th className="pb-3 font-medium">
                   <button onClick={() => handleSort('startTime')} className="flex items-center gap-1 hover:text-foreground">
-                    Heure <SortIcon f="startTime" />
+                    {t('logs.col.time')} <SortIcon f="startTime" />
                   </button>
                 </th>
                 <th className="pb-3 font-medium text-right">
                   <button onClick={() => handleSort('cost')} className="ml-auto flex items-center gap-1 hover:text-foreground">
-                    Coût <SortIcon f="cost" />
+                    {t('logs.col.cost')} <SortIcon f="cost" />
                   </button>
                 </th>
-                <th className="pb-3 font-medium text-right">Actions</th>
+                <th className="pb-3 font-medium text-right">{t('logs.col.actions')}</th>
               </tr>
             </thead>
             <tbody>
               {paginated.map((call) => {
                 const lead = call.lead
-                const q = QUAL_META[effectiveQualKey(call, confirmed)]
+                const q = QUAL_META[effectiveQualKey(call, confirmedRdvLeadKeys)]
                 const lvl = agentLevel(call.agentName)
                 const leadKey = call.meta?.leadId ?? lead?.id
                 const isMulti = leadKey ? multiAgentLeads.has(leadKey) : false
@@ -265,7 +266,7 @@ export function CallLogsTable({
         <div className="flex flex-col gap-3 lg:hidden">
           {paginated.map((call) => {
             const lead = call.lead
-            const q = QUAL_META[effectiveQualKey(call, confirmed)]
+            const q = QUAL_META[effectiveQualKey(call, confirmedRdvLeadKeys)]
             return (
               <button
                 key={call.id}

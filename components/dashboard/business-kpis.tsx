@@ -17,7 +17,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { previousPeriodRange } from '@/lib/filters'
 import { makeDelta } from '@/lib/analytics'
 import { useFiltersStore } from '@/lib/stores/filters-store'
+import { useRdvStore } from '@/lib/stores/rdv-store'
 import { leadGroupKey } from '@/lib/lead-key'
+import { effectiveQualKey } from '@/lib/rdv'
 import { bmiOrNull } from '@/lib/bmi'
 import { DetailSlideOver } from './director/detail-slideover'
 import type {
@@ -34,7 +36,6 @@ interface Props {
   filteredCalls: CallLogEnriched[]
   allCalls: CallLogEnriched[]
   leads: Lead[]
-  confirmedRdvLeadKeys?: Set<string>
   onSelectCall?: (call: CallLogEnriched) => void
   isLoading?: boolean
 }
@@ -60,12 +61,11 @@ export function BusinessKpis({
   filteredCalls,
   allCalls,
   leads,
-  confirmedRdvLeadKeys,
   onSelectCall,
   isLoading,
 }: Props) {
   const filters = useFiltersStore((s) => s.filters)
-  const confirmed = confirmedRdvLeadKeys ?? new Set<string>()
+  const confirmedRdvLeadKeys = useRdvStore((s) => s.confirmedRdvLeadKeys)
   const [panel, setPanel] = useState<{
     title: string
     calls: CallLogEnriched[]
@@ -74,19 +74,19 @@ export function BusinessKpis({
   const computed = useMemo(() => {
     const total = filteredCalls.length
     const answered = filteredCalls.filter((c) => c.answered).length
-    // Strict RDV count (#1): leads in the confirmed set
+    // RDV count: distinct leads passing the strict RDV CONFIRME check.
     const rdvLeads = new Set<string>()
     for (const c of filteredCalls) {
+      if (effectiveQualKey(c, confirmedRdvLeadKeys) !== 'rdv_confirme') continue
       const k = leadGroupKey(c)
-      if (k && confirmed.has(k)) rdvLeads.add(k)
+      if (k) rdvLeads.add(k)
     }
     const rdv = rdvLeads.size
     const cost = filteredCalls.reduce((s, c) => s + (c.cost ?? 0), 0)
-    const wrongNum = filteredCalls.filter(
-      (c) =>
-        c.lead?.qualification === 'FAUX NUMERO' ||
-        c.lead?.qualification === 'PAS DE REPONSE'
-    ).length
+    const wrongNum = filteredCalls.filter((c) => {
+      const q = effectiveQualKey(c, confirmedRdvLeadKeys)
+      return q === 'faux_numero' || q === 'pas_de_reponse'
+    }).length
 
     // Previous period comparison
     const prev = previousPeriodRange(filters.period, filters.customStart, filters.customEnd)
@@ -97,8 +97,9 @@ export function BusinessKpis({
     const prevAnswered = prevCalls.filter((c) => c.answered).length
     const prevRdvLeads = new Set<string>()
     for (const c of prevCalls) {
+      if (effectiveQualKey(c, confirmedRdvLeadKeys) !== 'rdv_confirme') continue
       const k = leadGroupKey(c)
-      if (k && confirmed.has(k)) prevRdvLeads.add(k)
+      if (k) prevRdvLeads.add(k)
     }
     const prevRdv = prevRdvLeads.size
     const prevCost = prevCalls.reduce((s, c) => s + (c.cost ?? 0), 0)
@@ -117,9 +118,10 @@ export function BusinessKpis({
       rdvDelta: makeDelta(rdv, prevRdv),
       costDelta: makeDelta(cost, prevCost),
     }
-  }, [filteredCalls, allCalls, filters, confirmed])
+  }, [filteredCalls, allCalls, filters, confirmedRdvLeadKeys])
 
-  // Eligible leads in pipeline (forward-looking, full lead set)
+  // Eligible leads in pipeline (forward-looking, full lead set).
+  // Note: leads have no per-call signals, so we keep the CRM check here.
   const eligibleLeadIds = useMemo(() => {
     const ids = new Set<string>()
     for (const l of leads) {
@@ -135,27 +137,24 @@ export function BusinessKpis({
   const callsForId = (id: KpiId): CallLogEnriched[] => {
     switch (id) {
       case 'rdv':
-        return filteredCalls.filter((c) => {
-          const k = leadGroupKey(c)
-          return !!k && confirmed.has(k)
-        })
+        return filteredCalls.filter(
+          (c) => effectiveQualKey(c, confirmedRdvLeadKeys) === 'rdv_confirme'
+        )
       case 'answer':
         return filteredCalls.filter((c) => c.answered)
       case 'cost':
         return [...filteredCalls].sort((a, b) => (b.cost ?? 0) - (a.cost ?? 0))
       case 'wrong':
-        return filteredCalls.filter(
-          (c) =>
-            c.lead?.qualification === 'FAUX NUMERO' ||
-            c.lead?.qualification === 'PAS DE REPONSE'
-        )
+        return filteredCalls.filter((c) => {
+          const q = effectiveQualKey(c, confirmedRdvLeadKeys)
+          return q === 'faux_numero' || q === 'pas_de_reponse'
+        })
       case 'eligible':
         return filteredCalls.filter((c) => c.lead?.id && eligibleLeadIds.has(c.lead.id))
       case 'avg_attempts':
-        return filteredCalls.filter((c) => {
-          const k = leadGroupKey(c)
-          return !!k && confirmed.has(k)
-        })
+        return filteredCalls.filter(
+          (c) => effectiveQualKey(c, confirmedRdvLeadKeys) === 'rdv_confirme'
+        )
       case 'active':
       case 'total':
       default:
@@ -279,7 +278,6 @@ export function BusinessKpis({
         onOpenChange={(o) => !o && setPanel(null)}
         title={panel?.title ?? ''}
         calls={panel?.calls ?? []}
-        confirmedRdvLeadKeys={confirmedRdvLeadKeys}
         onSelectCall={(c) => {
           setPanel(null)
           onSelectCall?.(c)

@@ -31,6 +31,7 @@ import { TranscriptViewer } from '../transcript-viewer'
 import { DirectionIcon } from '../direction-indicator'
 import { QUAL_META } from '@/lib/qualifications'
 import { effectiveQualKey } from '@/lib/rdv'
+import { useRdvStore } from '@/lib/stores/rdv-store'
 import { agentLevel, leadGroupKey } from '@/lib/lead-key'
 import { CRENEAUX } from '@/lib/timezone'
 import { formatBmi } from '@/lib/bmi'
@@ -40,7 +41,6 @@ import type { HandoffCandidate } from '@/lib/director-metrics'
 interface Props {
   candidate: HandoffCandidate | null
   allCalls: CallLogEnriched[]
-  confirmedRdvLeadKeys: Set<string>
   open: boolean
   onOpenChange: (open: boolean) => void
   onAssigned?: (leadId: string, to: string) => void
@@ -55,11 +55,11 @@ function fmtDur(seconds: number): string {
 export function HandoffDetailSheet({
   candidate,
   allCalls,
-  confirmedRdvLeadKeys,
   open,
   onOpenChange,
   onAssigned,
 }: Props) {
+  const confirmedRdvLeadKeys = useRdvStore((s) => s.confirmedRdvLeadKeys)
   const [busy, setBusy] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
   const [openCallId, setOpenCallId] = useState<string | null>(null)
@@ -204,7 +204,6 @@ export function HandoffDetailSheet({
                   <CallEntry
                     key={c.callId}
                     call={c}
-                    confirmed={confirmedRdvLeadKeys}
                     isOpen={openCallId === c.callId}
                     onToggle={() =>
                       setOpenCallId(openCallId === c.callId ? null : c.callId)
@@ -246,17 +245,16 @@ function InfoField({
 
 function CallEntry({
   call,
-  confirmed,
   isOpen,
   onToggle,
 }: {
   call: CallLogEnriched
-  confirmed: Set<string>
   isOpen: boolean
   onToggle: () => void
 }) {
+  const confirmedRdvLeadKeys = useRdvStore((s) => s.confirmedRdvLeadKeys)
   const [audioTime, setAudioTime] = useState(0)
-  const q = QUAL_META[effectiveQualKey(call, confirmed)]
+  const q = QUAL_META[effectiveQualKey(call, confirmedRdvLeadKeys)]
   const lvl = agentLevel(call.agentName)
 
   return (
