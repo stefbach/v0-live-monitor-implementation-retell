@@ -1,7 +1,7 @@
 'use client'
 
 import useSWR, { useSWRConfig } from 'swr'
-import { useMemo } from 'react'
+import { useMemo, useEffect } from 'react'
 import type {
   CallLogEnriched,
   ActiveCallEnriched,
@@ -13,7 +13,9 @@ import type {
 } from '@/lib/types'
 import { applyFilters } from '@/lib/filters'
 import { useFiltersStore } from '@/lib/stores/filters-store'
+import { useRdvStore } from '@/lib/stores/rdv-store'
 import { computeBusinessMetrics } from '@/lib/leads'
+import { computeConfirmedRdvLeads, effectiveQualKey } from '@/lib/rdv'
 
 const fetcher = async <T>(url: string): Promise<T> => {
   const res = await fetch(url)
@@ -41,9 +43,14 @@ export interface DashboardData {
   refresh: () => Promise<unknown>
 }
 
-function buildCallMetrics(calls: CallLogEnriched[]): CallMetrics {
+function buildCallMetrics(
+  calls: CallLogEnriched[],
+  confirmedRdvLeadKeys: Set<string>
+): CallMetrics {
   const total = calls.length
-  const successful = calls.filter((c) => c.lead?.qualification === 'RDV MEDECIN').length
+  const successful = calls.filter(
+    (c) => effectiveQualKey(c, confirmedRdvLeadKeys) === 'rdv_confirme'
+  ).length
   const failed = calls.filter((c) => c.status === 'failed').length
   const noAnswer = calls.filter((c) => !c.answered).length
   const busy = calls.filter((c) => c.status === 'busy').length
@@ -64,6 +71,7 @@ function buildCallMetrics(calls: CallLogEnriched[]): CallMetrics {
 
 export function useDashboardData(): DashboardData {
   const filters = useFiltersStore((s) => s.filters)
+  const setConfirmedRdvLeadKeys = useRdvStore((s) => s.setConfirmedRdvLeadKeys)
 
   const { data, error, isLoading, mutate } = useSWR<RawCallsData>(
     '/api/retell/calls',
@@ -78,8 +86,21 @@ export function useDashboardData(): DashboardData {
   const leads = data?.leads ?? []
   const agentNames = data?.agentNames ?? {}
 
+  // Compute strict RDV lead keys once per dataset and push to the store
+  // so all components can read it without prop-drilling.
+  const confirmedRdvLeadKeys = useMemo(
+    () => computeConfirmedRdvLeads(allCalls),
+    [allCalls]
+  )
+  useEffect(() => {
+    setConfirmedRdvLeadKeys(confirmedRdvLeadKeys)
+  }, [confirmedRdvLeadKeys, setConfirmedRdvLeadKeys])
+
   const filteredCalls = useMemo(() => applyFilters(allCalls, filters), [allCalls, filters])
-  const callMetrics = useMemo(() => buildCallMetrics(filteredCalls), [filteredCalls])
+  const callMetrics = useMemo(
+    () => buildCallMetrics(filteredCalls, confirmedRdvLeadKeys),
+    [filteredCalls, confirmedRdvLeadKeys]
+  )
 
   const businessMetrics = useMemo<BusinessMetrics | null>(() => {
     if (!leads.length) return null

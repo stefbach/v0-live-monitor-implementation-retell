@@ -31,6 +31,7 @@ import { TranscriptViewer } from '../transcript-viewer'
 import { DirectionIcon } from '../direction-indicator'
 import { QUAL_META } from '@/lib/qualifications'
 import { effectiveQualKey } from '@/lib/rdv'
+import { useRdvStore } from '@/lib/stores/rdv-store'
 import { agentLevel, leadGroupKey } from '@/lib/lead-key'
 import { CRENEAUX } from '@/lib/timezone'
 import { formatBmi } from '@/lib/bmi'
@@ -58,6 +59,7 @@ export function HandoffDetailSheet({
   onOpenChange,
   onAssigned,
 }: Props) {
+  const confirmedRdvLeadKeys = useRdvStore((s) => s.confirmedRdvLeadKeys)
   const [busy, setBusy] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
   const [openCallId, setOpenCallId] = useState<string | null>(null)
@@ -250,8 +252,9 @@ function CallEntry({
   isOpen: boolean
   onToggle: () => void
 }) {
+  const confirmedRdvLeadKeys = useRdvStore((s) => s.confirmedRdvLeadKeys)
   const [audioTime, setAudioTime] = useState(0)
-  const q = QUAL_META[effectiveQualKey(call)]
+  const q = QUAL_META[effectiveQualKey(call, confirmedRdvLeadKeys)]
   const lvl = agentLevel(call.agentName)
 
   return (

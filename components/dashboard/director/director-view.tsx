@@ -40,6 +40,7 @@ import {
 } from '@/lib/director-metrics'
 import { QUAL_META, QUALIFICATION_CARDS, type QualKey } from '@/lib/qualifications'
 import { useFiltersStore } from '@/lib/stores/filters-store'
+import { useRdvStore } from '@/lib/stores/rdv-store'
 import { PERIODS } from '@/lib/filters'
 import type { CallLogEnriched, Lead } from '@/lib/types'
 
@@ -68,6 +69,7 @@ export function DirectorView({
   const { t } = useT()
   const period = useFiltersStore((s) => s.filters.period)
   const periodLabel = PERIODS.find((p) => p.id === period)?.label ?? period
+  const confirmedRdvLeadKeys = useRdvStore((s) => s.confirmedRdvLeadKeys)
   const [threshold, setThreshold] = useState(60)
 
   const [panel, setPanel] = useState<{
@@ -86,8 +88,8 @@ export function DirectorView({
     [filteredCalls, threshold]
   )
   const qualCounts = useMemo(
-    () => computeQualificationCounts(filteredCalls),
-    [filteredCalls]
+    () => computeQualificationCounts(filteredCalls, confirmedRdvLeadKeys),
+    [filteredCalls, confirmedRdvLeadKeys]
   )
   const phase = useMemo(() => computePhaseTracking(filteredCalls), [filteredCalls])
   const agents = useMemo(() => computeAgentBuckets(filteredCalls), [filteredCalls])
@@ -102,7 +104,7 @@ export function DirectorView({
   const openQual = (key: QualKey, title: string) =>
     setPanel({
       title,
-      calls: callsForQualification(filteredCalls, key),
+      calls: callsForQualification(filteredCalls, key, confirmedRdvLeadKeys),
       // The RAPPEL card surfaces leads_rdv.rappel_rdv per row.
       rappelDate: key === 'rappel',
       // "À passer à l'humain" surfaces the call summary so the operator

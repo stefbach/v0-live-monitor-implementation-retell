@@ -22,6 +22,7 @@ import { QUAL_META } from '@/lib/qualifications'
 import { CRENEAUX } from '@/lib/timezone'
 import { agentLevel } from '@/lib/director-metrics'
 import { effectiveQualKey } from '@/lib/rdv'
+import { useRdvStore } from '@/lib/stores/rdv-store'
 import { useT } from '@/lib/hooks/use-t'
 import type { CallLogEnriched } from '@/lib/types'
 
@@ -51,6 +52,7 @@ export function CallLogsTable({
   onCallSelect,
 }: Props) {
   const { t } = useT()
+  const confirmedRdvLeadKeys = useRdvStore((s) => s.confirmedRdvLeadKeys)
   const [sortField, setSortField] = useState<SortField>('startTime')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [page, setPage] = useState(0)
@@ -161,7 +163,7 @@ export function CallLogsTable({
             <tbody>
               {paginated.map((call) => {
                 const lead = call.lead
-                const q = QUAL_META[effectiveQualKey(call)]
+                const q = QUAL_META[effectiveQualKey(call, confirmedRdvLeadKeys)]
                 const lvl = agentLevel(call.agentName)
                 const leadKey = call.meta?.leadId ?? lead?.id
                 const isMulti = leadKey ? multiAgentLeads.has(leadKey) : false
@@ -264,7 +266,7 @@ export function CallLogsTable({
         <div className="flex flex-col gap-3 lg:hidden">
           {paginated.map((call) => {
             const lead = call.lead
-            const q = QUAL_META[effectiveQualKey(call)]
+            const q = QUAL_META[effectiveQualKey(call, confirmedRdvLeadKeys)]
             return (
               <button
                 key={call.id}

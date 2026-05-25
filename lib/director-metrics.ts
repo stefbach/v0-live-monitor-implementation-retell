@@ -104,7 +104,8 @@ export interface QualCount {
 // call lives in exactly one card — Σ counts = calls.length — because
 // qualKeyFromRaw routes unknown / missing values to 'pas_de_reponse'.
 export function computeQualificationCounts(
-  calls: CallLogEnriched[]
+  calls: CallLogEnriched[],
+  confirmedRdvLeadKeys: Set<string> = new Set()
 ): Record<QualKey, number> {
   const counts: Record<QualKey, number> = {
     rdv_confirme: 0,
@@ -117,15 +118,16 @@ export function computeQualificationCounts(
     non_eligible: 0,
     ne_pas_rappeler: 0,
   }
-  for (const c of calls) counts[effectiveQualKey(c)]++
+  for (const c of calls) counts[effectiveQualKey(c, confirmedRdvLeadKeys)]++
   return counts
 }
 
 export function callsForQualification(
   calls: CallLogEnriched[],
-  key: QualKey
+  key: QualKey,
+  confirmedRdvLeadKeys: Set<string> = new Set()
 ): CallLogEnriched[] {
-  return calls.filter((c) => effectiveQualKey(c) === key)
+  return calls.filter((c) => effectiveQualKey(c, confirmedRdvLeadKeys) === key)
 }
 
 // ─── Phase J1 / J3 / J5 tracking ────────────────────────────────────────────
