@@ -196,6 +196,14 @@ function PeriodSelector() {
     }
   }
 
+  const handleClear = () => {
+    setRange(undefined)
+    patch({ period: '7d', customStart: null, customEnd: null })
+    setOpen(false)
+  }
+
+  const hasCustomRange = period === 'custom' && !!customStart && !!customEnd
+
   const customLabel = (() => {
     if (period !== 'custom' || !customStart || !customEnd) return t('period.custom')
     const fmt = (iso: string) =>
@@ -241,11 +249,25 @@ function PeriodSelector() {
             disabled={{ after: new Date() }}
             initialFocus
           />
-          {range?.from && !range?.to && (
-            <p className="px-4 pb-3 text-xs text-muted-foreground">
-              Sélectionne la date de fin
+          <div className="flex items-center justify-between gap-2 border-t px-3 py-2">
+            <p className="text-xs text-muted-foreground">
+              {range?.from && !range?.to
+                ? 'Sélectionne la date de fin'
+                : hasCustomRange
+                  ? customLabel
+                  : 'Choisis une plage de dates'}
             </p>
-          )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleClear}
+              disabled={!hasCustomRange && !range?.from}
+              className="h-7 gap-1 text-xs"
+            >
+              <X className="h-3 w-3" />
+              {t('filter.clear')}
+            </Button>
+          </div>
         </PopoverContent>
       </Popover>
     </div>
