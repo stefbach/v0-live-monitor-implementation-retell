@@ -12,11 +12,21 @@ const fetcher = async (url: string, body: InsightsRequest) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  const json = await res.json()
-  if (!res.ok) {
-    throw new Error(json.error || `API error: ${res.status}`)
+  let json: { data?: InsightsResult; error?: string } | null = null
+  try {
+    json = await res.json()
+  } catch {
+    if (res.status === 504) {
+      throw new Error(
+        'La génération a pris trop de temps (timeout Vercel). Essaie avec une période plus courte.'
+      )
+    }
+    throw new Error(`Erreur serveur inattendue (${res.status})`)
   }
-  return json.data as InsightsResult
+  if (!res.ok) {
+    throw new Error(json?.error || `API error: ${res.status}`)
+  }
+  return json!.data as InsightsResult
 }
 
 function toLLMInput(calls: CallLogEnriched[]): InsightsCallInput[] {

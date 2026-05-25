@@ -2,7 +2,7 @@ import { getAnthropic, ANTHROPIC_MODEL } from '@/lib/llm'
 import { buildSystemPrompt, INSIGHTS_TOOL, buildUserMessage } from './prompts'
 import type { InsightsCallInput, InsightsResult } from './types'
 
-const MAX_CALLS_TO_LLM = 400 // safety cap
+const MAX_CALLS_TO_LLM = 80 // keep response time under Vercel's function timeout
 
 interface GenerateArgs {
   calls: InsightsCallInput[]
@@ -18,8 +18,8 @@ function selectCalls(calls: InsightsCallInput[]): InsightsCallInput[] {
   const rest = calls.filter(
     (c) => c.qualification !== 'RDV MEDECIN' && c.qualification !== 'PAS INTERESSE'
   )
-  const budget = MAX_CALLS_TO_LLM - rdv.length - Math.min(lost.length, 60)
-  return [...rdv, ...lost.slice(0, 60), ...rest.slice(0, Math.max(budget, 0))]
+  const budget = MAX_CALLS_TO_LLM - rdv.length - Math.min(lost.length, 20)
+  return [...rdv, ...lost.slice(0, 20), ...rest.slice(0, Math.max(budget, 0))]
 }
 
 function aggregateStats(calls: InsightsCallInput[]) {
@@ -190,7 +190,7 @@ export async function generateInsights({
     disconnect: c.disconnection_reason ?? null,
     attempt: c.attempt_number,
     answered: c.answered,
-    summary: (c.summary ?? '').slice(0, 600),
+    summary: (c.summary ?? '').slice(0, 300),
   }))
 
   const userMessage = buildUserMessage({
@@ -203,7 +203,7 @@ export async function generateInsights({
 
   const response = await client.messages.create({
     model: ANTHROPIC_MODEL,
-    max_tokens: 4096,
+    max_tokens: 2048,
     system: buildSystemPrompt(),
     messages: [{ role: 'user', content: userMessage }],
     tools: [INSIGHTS_TOOL],
