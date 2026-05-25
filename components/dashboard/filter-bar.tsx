@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Search, X, ChevronDown, RotateCcw, CalendarRange } from 'lucide-react'
+import { Search, X, ChevronDown, RotateCcw, CalendarRange, Check } from 'lucide-react'
 import { type DateRange } from 'react-day-picker'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -211,21 +211,38 @@ function PeriodSelector() {
     return `${fmt(customStart)} – ${fmt(customEnd)}`
   })()
 
+  // Human-readable label for the active period shown outside the pill bar
+  const activePeriodLabel = (() => {
+    if (period === 'custom') return customLabel
+    const found = PERIODS.find((p) => p.id === period)
+    return found ? t(`period.${found.id}`) : ''
+  })()
+
   return (
-    <div className="flex items-center gap-1 rounded-md border bg-background p-0.5">
-      {PERIODS.filter((p) => p.id !== 'custom').map((p) => (
-        <button
-          key={p.id}
-          onClick={() => patch({ period: p.id })}
-          className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
-            period === p.id
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          {t(`period.${p.id}`)}
-        </button>
-      ))}
+    <div className="flex flex-col gap-1">
+      {/* Active period badge — always visible */}
+      <div className="flex items-center gap-1.5">
+        <span className="text-xs text-muted-foreground">{t('period.label')}</span>
+        <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary ring-1 ring-primary/30">
+          <Check className="h-3 w-3" />
+          {activePeriodLabel}
+        </span>
+      </div>
+
+      <div className="flex items-center gap-1 rounded-md border bg-background p-0.5">
+        {PERIODS.filter((p) => p.id !== 'custom').map((p) => (
+          <button
+            key={p.id}
+            onClick={() => patch({ period: p.id })}
+            className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+              period === p.id
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {t(`period.${p.id}`)}
+          </button>
+        ))}
 
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
@@ -270,6 +287,7 @@ function PeriodSelector() {
           </div>
         </PopoverContent>
       </Popover>
+      </div>
     </div>
   )
 }
