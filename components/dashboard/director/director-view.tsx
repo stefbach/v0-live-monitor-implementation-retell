@@ -25,6 +25,7 @@ import { ReportButton } from '../report-button'
 import { HandoffDetailSheet } from './handoff-detail-sheet'
 import { DurationHistogram } from '../duration-histogram'
 import { VerbatimPanel } from '../verbatim-panel'
+import { InboundCallsPanel } from '../inbound-calls-panel'
 import { useT } from '@/lib/hooks/use-t'
 import { formatBmi } from '@/lib/bmi'
 import {
@@ -307,6 +308,13 @@ export function DirectorView({
           </div>
         </CardContent>
       </Card>
+
+      {/* Appels entrants */}
+      <InboundCallsPanel
+        calls={filteredCalls}
+        onSelectCall={onSelectCall}
+        isLoading={isLoading}
+      />
 
       {/* Phase tracking + Agents */}
       <div className="grid gap-6 lg:grid-cols-2">
