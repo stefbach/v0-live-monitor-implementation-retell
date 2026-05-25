@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable'
 import type { CallLogEnriched, Lead, DashboardFilters } from './types'
 import { leadGroupKey } from './lead-key'
 import { qualKeyFromRaw, QUAL_META, QUALIFICATION_CARDS } from './qualifications'
+import { effectiveQualKey, computeConfirmedRdvLeads } from './rdv'
 import { computeHeatmap } from './analytics'
 import { periodRange, PERIODS } from './filters'
 import { getUKParts } from './timezone'
@@ -101,10 +102,11 @@ export function buildReportData(args: {
     groups.get(key)!.push(c)
   }
 
-  // RDV at lead level — distinct leads tagged "RDV MEDECIN" in Supabase.
+  // RDV at lead level — distinct leads passing the strict Retell-derived check.
+  const confirmedRdvLeadKeys = computeConfirmedRdvLeads(allCalls)
   const rdvLeadsInPeriod = new Set<string>()
   for (const c of inPeriod) {
-    if (c.lead?.qualification !== 'RDV MEDECIN') continue
+    if (effectiveQualKey(c, confirmedRdvLeadKeys) !== 'rdv_confirme') continue
     const k = leadGroupKey(c)
     if (k) rdvLeadsInPeriod.add(k)
   }
@@ -116,7 +118,7 @@ export function buildReportData(args: {
       const answered = calls.filter((c) => c.answered).length
       const bucketRdv = new Set<string>()
       for (const c of calls) {
-        if (c.lead?.qualification !== 'RDV MEDECIN') continue
+        if (effectiveQualKey(c, confirmedRdvLeadKeys) !== 'rdv_confirme') continue
         const k = leadGroupKey(c)
         if (k) bucketRdv.add(k)
       }
@@ -163,7 +165,7 @@ export function buildReportData(args: {
   }
   const counts: Record<string, number> = {}
   for (const c of seen.values()) {
-    const key = qualKeyFromRaw(c.lead?.qualification)
+    const key = effectiveQualKey(c, confirmedRdvLeadKeys)
     counts[key] = (counts[key] ?? 0) + 1
   }
   const leadsTotal = Object.values(counts).reduce((s, n) => s + n, 0)

@@ -4,7 +4,9 @@ import { useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useFiltersStore } from '@/lib/stores/filters-store'
+import { useRdvStore } from '@/lib/stores/rdv-store'
 import { agentLevel, leadGroupKey } from '@/lib/lead-key'
+import { effectiveQualKey } from '@/lib/rdv'
 import type { CallLogEnriched } from '@/lib/types'
 
 interface Props {
@@ -46,6 +48,7 @@ export function AgentPerformance({
 }: Props) {
   const toggle = useFiltersStore((s) => s.toggleArray)
   const selected = useFiltersStore((s) => s.filters.agents)
+  const confirmedRdvLeadKeys = useRdvStore((s) => s.confirmedRdvLeadKeys)
   const selSet = new Set(selected)
 
   const rows: LevelRow[] = useMemo(() => {
@@ -66,7 +69,7 @@ export function AgentPerformance({
         const k = leadGroupKey(c)
         if (!k || leadsTouched.has(k)) continue
         leadsTouched.add(k)
-        if (c.lead?.qualification === 'RDV MEDECIN') rdv++
+        if (effectiveQualKey(c, confirmedRdvLeadKeys) === 'rdv_confirme') rdv++
       }
 
       return {
@@ -82,7 +85,7 @@ export function AgentPerformance({
         totalCost: cost,
       }
     })
-  }, [filteredCalls])
+  }, [filteredCalls, confirmedRdvLeadKeys])
 
   if (isLoading) {
     return (

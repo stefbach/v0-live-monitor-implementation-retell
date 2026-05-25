@@ -5,6 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Skeleton } from '@/components/ui/skeleton'
 import { DURATION_BUCKETS } from '@/lib/filters'
 import { useFiltersStore } from '@/lib/stores/filters-store'
+import { useRdvStore } from '@/lib/stores/rdv-store'
+import { effectiveQualKey } from '@/lib/rdv'
+import { QUAL_META } from '@/lib/qualifications'
 import type { CallLogEnriched, DurationBucketId } from '@/lib/types'
 
 interface Props {
@@ -25,16 +28,19 @@ interface BucketStat {
 export function DurationHistogram({ calls, isLoading }: Props) {
   const toggleArray = useFiltersStore((s) => s.toggleArray)
   const selectedDurations = useFiltersStore((s) => s.filters.durations)
+  const confirmedRdvLeadKeys = useRdvStore((s) => s.confirmedRdvLeadKeys)
 
   const buckets: BucketStat[] = useMemo(() => {
     return DURATION_BUCKETS.map((b) => {
       const inBucket = calls.filter((c) => b.test(c.duration))
-      const rdv = inBucket.filter((c) => c.lead?.qualification === 'RDV MEDECIN').length
+      const rdv = inBucket.filter(
+        (c) => effectiveQualKey(c, confirmedRdvLeadKeys) === 'rdv_confirme'
+      ).length
       const answered = inBucket.filter((c) => c.answered).length
-      // Find top qualification in this bucket
+      // Find top qualification in this bucket (via effective key)
       const counts = new Map<string, number>()
       for (const c of inBucket) {
-        const q = c.lead?.qualification ?? 'UNKNOWN'
+        const q = QUAL_META[effectiveQualKey(c, confirmedRdvLeadKeys)].label
         counts.set(q, (counts.get(q) ?? 0) + 1)
       }
       const topQualif = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
@@ -48,7 +54,7 @@ export function DurationHistogram({ calls, isLoading }: Props) {
         topQualif,
       }
     })
-  }, [calls])
+  }, [calls, confirmedRdvLeadKeys])
 
   if (isLoading) {
     return (
