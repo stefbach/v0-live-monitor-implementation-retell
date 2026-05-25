@@ -81,9 +81,6 @@ export default function DashboardPage() {
                 </span>
               </TabsTrigger>
               <TabsTrigger value="erreurs">⚠️ {t('tab.erreurs')}</TabsTrigger>
-              <TabsTrigger value="reclassify" className="gap-1.5">
-                <span className="text-cyan-400">🛠️</span> {t('tab.reclassify')}
-              </TabsTrigger>
               <TabsTrigger value="insights" className="gap-1.5">
                 <span className="text-violet-400">✨</span> {t('tab.insights')}
               </TabsTrigger>
@@ -168,11 +165,8 @@ export default function DashboardPage() {
               />
             </TabsContent>
 
-            <TabsContent value="insights" className="mt-6">
+            <TabsContent value="insights" className="mt-6 space-y-6">
               <InsightsPanel filteredCalls={filteredCalls} />
-            </TabsContent>
-
-            <TabsContent value="reclassify" className="mt-6">
               <ReclassifyPanel filteredCalls={filteredCalls} onRefresh={refresh} />
             </TabsContent>
 
@@ -256,10 +250,11 @@ export default function DashboardPage() {
               </>
             )}
 
-            {activeTab === 'insights' && <InsightsPanel filteredCalls={filteredCalls} />}
-
-            {activeTab === 'reclassify' && (
-              <ReclassifyPanel filteredCalls={filteredCalls} onRefresh={refresh} />
+            {activeTab === 'insights' && (
+              <div className="space-y-6">
+                <InsightsPanel filteredCalls={filteredCalls} />
+                <ReclassifyPanel filteredCalls={filteredCalls} onRefresh={refresh} />
+              </div>
             )}
 
             {activeTab === 'calls' && (
