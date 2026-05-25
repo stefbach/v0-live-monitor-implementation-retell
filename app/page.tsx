@@ -23,6 +23,7 @@ import { ReportButton } from '@/components/dashboard/report-button'
 import { CallDetailSheet } from '@/components/dashboard/call-detail-sheet'
 import { LiveView } from '@/components/dashboard/live/live-view'
 import { ErrorsView } from '@/components/dashboard/errors/errors-view'
+import { InboundCallsPanel } from '@/components/dashboard/inbound-calls-panel'
 import { MobileBottomNav } from '@/components/dashboard/mobile-bottom-nav'
 import { useDashboardData } from '@/lib/hooks/use-calls'
 import { useT } from '@/lib/hooks/use-t'
@@ -104,6 +105,13 @@ export default function DashboardPage() {
                 <h2 className="text-lg font-semibold">📊 {t('tab.stats')}</h2>
                 <ReportButton allCalls={allCalls} leads={leads} />
               </div>
+
+              <InboundCallsPanel
+                calls={filteredCalls}
+                onSelectCall={handleCallSelect}
+                isLoading={isLoading}
+              />
+
               <BusinessKpis
                 metrics={callMetrics}
                 business={businessMetrics}
@@ -198,6 +206,11 @@ export default function DashboardPage() {
 
             {activeTab === 'stats' && (
               <>
+                <InboundCallsPanel
+                  calls={filteredCalls}
+                  onSelectCall={handleCallSelect}
+                  isLoading={isLoading}
+                />
                 <BusinessKpis
                   metrics={callMetrics}
                   business={businessMetrics}
