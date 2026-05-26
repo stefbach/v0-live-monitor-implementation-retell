@@ -118,7 +118,7 @@ export function InsightsPanel({ filteredCalls }: Props) {
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-red-300">{isError.message}</p>
-          <Button onClick={() => refresh()} variant="outline" size="sm" className="gap-2">
+          <Button onClick={() => { refresh().catch(() => {}) }} variant="outline" size="sm" className="gap-2">
             <RefreshCw className="h-4 w-4" /> Réessayer
           </Button>
         </CardContent>
@@ -155,7 +155,7 @@ export function InsightsPanel({ filteredCalls }: Props) {
     <div className="space-y-4">
       <InsightsHeader
         insights={insights}
-        onRefresh={() => refresh()}
+        onRefresh={() => { refresh().catch(() => {}) }}
         loading={isLoading}
         fromLocalCache={fromLocalCache}
       />

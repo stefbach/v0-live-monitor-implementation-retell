@@ -1,7 +1,7 @@
 'use client'
 
 import useSWR from 'swr'
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { CallLogEnriched } from '@/lib/types'
 import type { InsightsCallInput, InsightsRequest, InsightsResult } from '@/lib/insights/types'
 import { useInsightsStore, makeInsightsKey } from '@/lib/stores/insights-store'
@@ -86,22 +86,36 @@ export function useInsights({ filteredCalls, periodLabel, enabled }: Options) {
     if (data) setCached(cacheKey, data)
   }, [data, cacheKey, setCached])
 
+  // Local state for the manual refresh path — SWR doesn't see this fetch
+  // so isLoading would stay false and errors would be swallowed otherwise.
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [refreshError, setRefreshError] = useState<Error | undefined>(undefined)
+
   // Force a fresh server-side generation (ignores both client and server caches)
   const refresh = useCallback(async () => {
-    const result = await fetcher('/api/insights', {
-      calls: llmInput,
-      period_label: periodLabel,
-      force_refresh: true,
-    })
-    setCached(cacheKey, result)
-    await mutate(result, { revalidate: false })
-    return result
+    setIsRefreshing(true)
+    setRefreshError(undefined)
+    try {
+      const result = await fetcher('/api/insights', {
+        calls: llmInput,
+        period_label: periodLabel,
+        force_refresh: true,
+      })
+      setCached(cacheKey, result)
+      await mutate(result, { revalidate: false })
+      return result
+    } catch (e) {
+      setRefreshError(e as Error)
+      throw e
+    } finally {
+      setIsRefreshing(false)
+    }
   }, [mutate, llmInput, periodLabel, cacheKey, setCached])
 
   return {
     insights: cached ?? data ?? null,
-    isLoading: isLoading || isValidating,
-    isError: error as Error | undefined,
+    isLoading: isLoading || isValidating || isRefreshing,
+    isError: (error || refreshError) as Error | undefined,
     refresh,
     hasInput: llmInput.length > 0,
     inputCount: llmInput.length,
