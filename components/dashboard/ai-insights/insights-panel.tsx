@@ -136,7 +136,7 @@ export function InsightsPanel({ filteredCalls }: Props) {
               Analyse en cours…
             </CardTitle>
             <CardDescription>
-              DeepSeek analyse {inputCount.toLocaleString()} appels — patientez 10 à 20 secondes.
+              L'IA analyse {inputCount.toLocaleString()} appels — patientez {inputCount > 150 ? '60 à 120' : inputCount > 50 ? '30 à 60' : '15 à 30'} secondes.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
