@@ -62,7 +62,8 @@ export async function GET(
       .select(
         'id, nom, email, numero_telephone, patient_dob, email_sent, whatsapp_sent,' +
           ' relance_email_sent, relance_whatsapp_sent, relance_email_date,' +
-          ' last_response_date, last_call_datetime, first_mail, second_mail',
+          ' last_response_date, last_call_datetime,' +
+          ' first_mail:"1st_mail", second_mail:"2nd_mail"',
       )
       .eq('id', d.lead_id)
       .maybeSingle()
