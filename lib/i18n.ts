@@ -61,6 +61,7 @@ const fr: Dict = {
   'tab.erreurs': 'Erreurs & Alertes',
   'tab.insights': 'AI Insights',
   'tab.reclassify': 'Analyse IA',
+  'tab.nhsSuivi': 'Suivi NHS S2',
   'director.title': "Vue d'ensemble",
   'director.qualifications': 'Qualifications',
   'director.qualifications.desc':
@@ -294,6 +295,7 @@ const en: Dict = {
   'tab.erreurs': 'Errors & Alerts',
   'tab.insights': 'AI Insights',
   'tab.reclassify': 'AI Analysis',
+  'tab.nhsSuivi': 'NHS S2 Tracking',
   'director.title': 'Overview',
   'director.qualifications': 'Qualifications',
   'director.qualifications.desc':

@@ -23,6 +23,7 @@ import { ReportButton } from '@/components/dashboard/report-button'
 import { CallDetailSheet } from '@/components/dashboard/call-detail-sheet'
 import { LiveView } from '@/components/dashboard/live/live-view'
 import { ErrorsView } from '@/components/dashboard/errors/errors-view'
+import { NhsSuiviPanel } from '@/components/dashboard/nhs-suivi-panel'
 import { MobileBottomNav } from '@/components/dashboard/mobile-bottom-nav'
 import { useDashboardData } from '@/lib/hooks/use-calls'
 import { useT } from '@/lib/hooks/use-t'
@@ -83,6 +84,7 @@ export default function DashboardPage() {
               <TabsTrigger value="insights" className="gap-1.5">
                 <span className="text-violet-400">✨</span> {t('tab.insights')}
               </TabsTrigger>
+              <TabsTrigger value="nhs-suivi">🏥 Suivi NHS S2</TabsTrigger>
             </TabsList>
 
             <TabsContent value="directeur" className="mt-6">
@@ -181,6 +183,10 @@ export default function DashboardPage() {
             <TabsContent value="live" className="mt-6">
               <LiveView allCalls={allCalls} />
             </TabsContent>
+
+            <TabsContent value="nhs-suivi" className="mt-6">
+              <NhsSuiviPanel />
+            </TabsContent>
           </Tabs>
 
           {/* Mobile Content */}
@@ -267,6 +273,8 @@ export default function DashboardPage() {
             )}
 
             {activeTab === 'live' && <LiveView allCalls={allCalls} />}
+
+            {activeTab === 'nhs-suivi' && <NhsSuiviPanel />}
           </div>
         </main>
       </div>

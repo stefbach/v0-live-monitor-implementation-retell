@@ -1,6 +1,6 @@
 'use client'
 
-import { Home, BarChart3, List, Radio, AlertTriangle, Sparkles } from 'lucide-react'
+import { Home, BarChart3, List, Radio, AlertTriangle, Sparkles, HeartPulse } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/hooks/use-t'
 
@@ -16,6 +16,7 @@ const tabs = [
   { id: 'live', key: 'tab.live', icon: Radio },
   { id: 'erreurs', key: 'tab.erreurs', icon: AlertTriangle },
   { id: 'insights', key: 'tab.insights', icon: Sparkles },
+  { id: 'nhs-suivi', key: 'tab.nhsSuivi', icon: HeartPulse },
 ]
 
 export function MobileBottomNav({ activeTab, onTabChange }: MobileBottomNavProps) {
