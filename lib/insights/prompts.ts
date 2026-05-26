@@ -134,23 +134,37 @@ export const INSIGHTS_TOOL: Anthropic.Tool = {
         trends: {
           type: 'object',
           required: ['emerging_keywords', 'weak_signals'],
+          description:
+            "OBLIGATOIRE — analyse les résumés pour identifier les sujets qui reviennent. Ne renvoie JAMAIS de tableau vide tant qu'il y a au moins 5 résumés exploitables.",
           properties: {
             emerging_keywords: {
               type: 'array',
+              minItems: 3,
               maxItems: 8,
+              description:
+                'Au moins 3 mots ou expressions qui reviennent souvent dans les résumés (ex. BMI, NHS, coût, peur, conjoint, opération, ballon, Ozempic, follow up, etc.).',
               items: {
                 type: 'object',
                 required: ['keyword', 'count', 'note'],
                 properties: {
-                  keyword: { type: 'string' },
-                  count: { type: 'number' },
-                  note: { type: 'string' },
+                  keyword: { type: 'string', description: 'Le mot ou la courte expression' },
+                  count: {
+                    type: 'number',
+                    description: 'Nombre approximatif de résumés où il apparaît',
+                  },
+                  note: {
+                    type: 'string',
+                    description: 'Phrase courte expliquant pourquoi ce mot est notable',
+                  },
                 },
               },
             },
             weak_signals: {
               type: 'array',
+              minItems: 2,
               maxItems: 5,
+              description:
+                "Au moins 2 phrases-observations sur des patterns subtils détectés dans les résumés (ex. 'plusieurs prospects mentionnent leur conjoint comme frein', 'plusieurs raccrochages juste après évocation du BMI minimum').",
               items: { type: 'string' },
             },
           },
@@ -158,16 +172,24 @@ export const INSIGHTS_TOOL: Anthropic.Tool = {
         script_audit: {
           type: 'object',
           required: ['common_hangup_topics', 'converted_call_patterns'],
+          description:
+            "OBLIGATOIRE — analyse les résumés des appels raccrochés courts vs ceux qui ont mené à un RDV. Ne renvoie JAMAIS de tableau vide tant qu'il y a au moins 5 résumés exploitables.",
           properties: {
             common_hangup_topics: {
               type: 'array',
+              minItems: 2,
               maxItems: 5,
+              description:
+                "Au moins 2 thèmes qui reviennent juste avant un raccrochage ou un refus (depuis les résumés des appels PAS INTERESSE, FOLLOW UP, courts, etc.).",
               items: {
                 type: 'object',
                 required: ['topic', 'count', 'example_call_ids'],
                 properties: {
-                  topic: { type: 'string' },
-                  count: { type: 'number' },
+                  topic: {
+                    type: 'string',
+                    description: 'Le thème ou sujet qui apparaît avant raccrochage',
+                  },
+                  count: { type: 'number', description: "Nombre d'appels concernés" },
                   example_call_ids: {
                     type: 'array',
                     maxItems: 3,
@@ -178,14 +200,26 @@ export const INSIGHTS_TOOL: Anthropic.Tool = {
             },
             converted_call_patterns: {
               type: 'array',
+              minItems: 2,
               maxItems: 5,
+              description:
+                "Au moins 2 phrases ou comportements observés dans les résumés des appels RDV MEDECIN (reformulation, validation émotion, proposition d'un petit pas, etc.). Si zéro RDV dans le corpus, indique-le dans phrase_or_theme.",
               items: {
                 type: 'object',
                 required: ['phrase_or_theme', 'frequency_in_won', 'frequency_in_lost'],
                 properties: {
-                  phrase_or_theme: { type: 'string' },
-                  frequency_in_won: { type: 'number' },
-                  frequency_in_lost: { type: 'number' },
+                  phrase_or_theme: {
+                    type: 'string',
+                    description: 'La phrase, le thème ou le comportement observé',
+                  },
+                  frequency_in_won: {
+                    type: 'number',
+                    description: 'Nombre approximatif d\'appels RDV où il apparaît',
+                  },
+                  frequency_in_lost: {
+                    type: 'number',
+                    description: 'Nombre approximatif d\'appels perdus où il apparaît',
+                  },
                 },
               },
             },
