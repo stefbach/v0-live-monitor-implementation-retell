@@ -5,6 +5,7 @@ import {
   RefreshCw, AlertTriangle, CheckCircle2, Mail, MessageSquare,
   FileText, Send, Clock, XCircle, ChevronRight, TrendingUp,
 } from 'lucide-react'
+import { useT } from '@/lib/hooks/use-t'
 
 interface NhsStats {
   initial_email_sent: number
@@ -116,6 +117,7 @@ function PipelineStep({
 }
 
 export function NhsSuiviPanel() {
+  const { t, lang } = useT()
   const [stats, setStats] = useState<NhsStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -154,21 +156,26 @@ export function NhsSuiviPanel() {
   const p = (v: number, base: number) =>
     base > 0 ? Math.round((v / base) * 100) : 0
 
+  const plural = (key: string, n: number) =>
+    t(`${key}.${n > 1 ? 'other' : 'one'}`)
+
+  const locale = lang === 'fr' ? 'fr-FR' : 'en-GB'
+
   return (
     <div className="space-y-6 pb-8">
 
       <div className="flex items-start justify-between">
         <div>
           <h2 className="text-lg font-semibold text-gray-900">
-            Suivi patient NHS S2
+            {t('nhs.title')}
           </h2>
           <p className="text-sm text-gray-500 mt-0.5">
-            Pipeline complet · De l&apos;appel initial à la soumission NHS S2
+            {t('nhs.subtitle')}
           </p>
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs text-gray-400">
-            {lastRefresh.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+            {lastRefresh.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}
           </span>
           <button
             onClick={fetchStats}
@@ -176,14 +183,14 @@ export function NhsSuiviPanel() {
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
-            Actualiser
+            {t('nhs.refresh')}
           </button>
         </div>
       </div>
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
-          Erreur lors du chargement des données : {error}
+          {t('nhs.error')} : {error}
         </div>
       )}
 
@@ -201,19 +208,20 @@ export function NhsSuiviPanel() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-medium uppercase tracking-wider opacity-75 mb-1">
-                  Objectif mensuel NHS S2
+                  {t('nhs.objective.title')}
                 </p>
                 <div className="flex items-baseline gap-2">
                   <span className="text-4xl font-bold tabular-nums">{submitted}</span>
                   <span className="text-xl opacity-60">/ {target}</span>
                 </div>
                 <p className="text-sm opacity-70 mt-1">
-                  dossiers soumis ce mois · {remaining} restant{remaining > 1 ? 's' : ''} à atteindre
+                  {t('nhs.objective.submittedThisMonth')} · {remaining}{' '}
+                  {plural('nhs.objective.remainingToReach', remaining)}
                 </p>
               </div>
               <div className="w-52 shrink-0">
                 <div className="flex justify-between text-xs mb-1.5 opacity-80">
-                  <span>Progression</span>
+                  <span>{t('nhs.objective.progress')}</span>
                   <span>{progress}%</span>
                 </div>
                 <div className="h-2 bg-white/25 rounded-full overflow-hidden">
@@ -223,7 +231,7 @@ export function NhsSuiviPanel() {
                   />
                 </div>
                 <p className="text-xs opacity-60 mt-2">
-                  {stats.days_remaining} jour{stats.days_remaining > 1 ? 's' : ''} restant{stats.days_remaining > 1 ? 's' : ''} dans le mois
+                  {stats.days_remaining} {plural('nhs.objective.daysRemaining', stats.days_remaining)}
                 </p>
               </div>
             </div>
@@ -235,10 +243,10 @@ export function NhsSuiviPanel() {
                 <AlertTriangle className="w-4 h-4 text-white" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-red-700">Escalade requise</p>
-                <p className="text-xs text-red-500">Patients sans réponse depuis 3 jours+</p>
+                <p className="text-sm font-semibold text-red-700">{t('nhs.alert.escalation.title')}</p>
+                <p className="text-xs text-red-500">{t('nhs.alert.escalation.desc')}</p>
                 <p className="text-xs text-red-400 mt-0.5 flex items-center gap-1">
-                  Voir et assigner <ChevronRight className="w-3 h-3" />
+                  {t('nhs.alert.escalation.cta')} <ChevronRight className="w-3 h-3" />
                 </p>
               </div>
               <span className="text-3xl font-bold text-red-600 tabular-nums shrink-0">
@@ -251,11 +259,11 @@ export function NhsSuiviPanel() {
                 <CheckCircle2 className="w-4 h-4 text-white" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-emerald-700">Prêts à soumettre</p>
-                <p className="text-xs text-emerald-600">Dossiers complets — soumission NHS possible</p>
+                <p className="text-sm font-semibold text-emerald-700">{t('nhs.alert.ready.title')}</p>
+                <p className="text-xs text-emerald-600">{t('nhs.alert.ready.desc')}</p>
                 {stats.bank_exceptions > 0 && (
                   <p className="text-xs text-emerald-500 mt-0.5">
-                    dont {stats.bank_exceptions} exception relevés bancaires
+                    {t('nhs.alert.ready.bankExceptionTpl').replace('{n}', String(stats.bank_exceptions))}
                   </p>
                 )}
               </div>
@@ -266,36 +274,39 @@ export function NhsSuiviPanel() {
           </div>
 
           <div>
-            <SectionLabel icon="📧">Communication patient</SectionLabel>
+            <SectionLabel icon="📧">{t('nhs.section.communication')}</SectionLabel>
             <div className="grid grid-cols-4 gap-4">
               <KpiCard
-                label="Email explicatif envoyé"
+                label={t('nhs.comm.initialEmail.label')}
                 value={stats.initial_email_sent}
-                sub="Email initial J0"
+                sub={t('nhs.comm.initialEmail.sub')}
                 variant="blue"
                 icon={Mail}
               />
               <KpiCard
-                label="Email relance J+2"
+                label={t('nhs.comm.relanceEmail.label')}
                 value={stats.relance_email_sent}
-                sub="Relance avec liste des 11 docs"
+                sub={t('nhs.comm.relanceEmail.sub')}
                 variant="amber"
                 icon={Mail}
               />
               <KpiCard
-                label="WhatsApp relance J+2"
+                label={t('nhs.comm.relanceWhatsapp.label')}
                 value={stats.relance_whatsapp_sent}
-                sub="Relance en parallèle de l'email"
+                sub={t('nhs.comm.relanceWhatsapp.sub')}
                 variant="amber"
                 icon={MessageSquare}
               />
               <KpiCard
-                label="Réponses reçues"
+                label={t('nhs.comm.responses.label')}
                 value={stats.responses_received}
                 sub={
                   stats.initial_email_sent > 0
-                    ? `Taux réponse · ${p(stats.responses_received, stats.initial_email_sent)}%`
-                    : 'Patients actifs'
+                    ? t('nhs.comm.responses.rateTpl').replace(
+                        '{n}',
+                        String(p(stats.responses_received, stats.initial_email_sent))
+                      )
+                    : t('nhs.comm.responses.active')
                 }
                 variant="green"
                 icon={TrendingUp}
@@ -304,33 +315,33 @@ export function NhsSuiviPanel() {
           </div>
 
           <div>
-            <SectionLabel icon="📁">État des dossiers</SectionLabel>
+            <SectionLabel icon="📁">{t('nhs.section.dossiers')}</SectionLabel>
             <div className="grid grid-cols-4 gap-4">
               <KpiCard
-                label="Aucun document"
+                label={t('nhs.dossier.none.label')}
                 value={stats.no_docs}
-                sub="Relancés — en attente"
+                sub={t('nhs.dossier.none.sub')}
                 variant="neutral"
                 icon={FileText}
               />
               <KpiCard
-                label="Documents partiels"
+                label={t('nhs.dossier.partial.label')}
                 value={stats.partial_docs}
-                sub="Au moins 1 doc reçu"
+                sub={t('nhs.dossier.partial.sub')}
                 variant="amber"
                 icon={FileText}
               />
               <KpiCard
-                label="Dossiers complets"
+                label={t('nhs.dossier.complete.label')}
                 value={stats.complete_docs}
-                sub="Prêts pour la NHS →"
+                sub={t('nhs.dossier.complete.sub')}
                 variant="green"
                 icon={CheckCircle2}
               />
               <KpiCard
-                label="Sans réponse 3j+"
+                label={t('nhs.dossier.noResponse.label')}
                 value={stats.no_response_3j}
-                sub="Escalade humaine requise"
+                sub={t('nhs.dossier.noResponse.sub')}
                 variant="red"
                 icon={AlertTriangle}
               />
@@ -338,33 +349,33 @@ export function NhsSuiviPanel() {
           </div>
 
           <div>
-            <SectionLabel icon="🏥">Suivi NHS S2 (après soumission)</SectionLabel>
+            <SectionLabel icon="🏥">{t('nhs.section.nhsTracking')}</SectionLabel>
             <div className="grid grid-cols-4 gap-4">
               <KpiCard
-                label="Envoyés NHS"
+                label={t('nhs.tracking.sent.label')}
                 value={stats.sent_nhs}
-                sub="Ce mois en cours"
+                sub={t('nhs.tracking.sent.sub')}
                 variant="blue"
                 icon={Send}
               />
               <KpiCard
-                label="In review NHS"
+                label={t('nhs.tracking.inReview.label')}
                 value={stats.in_review}
-                sub="En cours d'examen"
+                sub={t('nhs.tracking.inReview.sub')}
                 variant="amber"
                 icon={Clock}
               />
               <KpiCard
-                label="Acceptés NHS"
+                label={t('nhs.tracking.accepted.label')}
                 value={stats.accepted}
-                sub="Prise en charge confirmée"
+                sub={t('nhs.tracking.accepted.sub')}
                 variant="green"
                 icon={CheckCircle2}
               />
               <KpiCard
-                label="Refusés NHS"
+                label={t('nhs.tracking.refused.label')}
                 value={stats.refused}
-                sub="À analyser"
+                sub={t('nhs.tracking.refused.sub')}
                 variant="red"
                 icon={XCircle}
               />
@@ -373,41 +384,41 @@ export function NhsSuiviPanel() {
 
           <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-5">
-              Pipeline de conversion — étapes patient
+              {t('nhs.section.pipeline')}
             </p>
             <div className="flex items-end gap-2">
               <PipelineStep
                 value={initialEmail}
-                label="Appel initial"
-                sub="J0"
+                label={t('nhs.pipeline.step.initial.label')}
+                sub={t('nhs.pipeline.step.initial.sub')}
                 pct={100}
               />
               <ChevronRight className="w-4 h-4 text-gray-300 mb-6 shrink-0" />
               <PipelineStep
                 value={relanceEmail}
-                label="Email relance"
-                sub="J+2"
+                label={t('nhs.pipeline.step.relance.label')}
+                sub={t('nhs.pipeline.step.relance.sub')}
                 pct={p(relanceEmail, initialEmail)}
               />
               <ChevronRight className="w-4 h-4 text-gray-300 mb-6 shrink-0" />
               <PipelineStep
                 value={responses}
-                label="Réponse reçue"
-                sub="J+2–5"
+                label={t('nhs.pipeline.step.response.label')}
+                sub={t('nhs.pipeline.step.response.sub')}
                 pct={p(responses, initialEmail)}
               />
               <ChevronRight className="w-4 h-4 text-gray-300 mb-6 shrink-0" />
               <PipelineStep
                 value={completeDocs}
-                label="Dossier complet"
-                sub="J+5–10"
+                label={t('nhs.pipeline.step.complete.label')}
+                sub={t('nhs.pipeline.step.complete.sub')}
                 pct={p(completeDocs, initialEmail)}
               />
               <ChevronRight className="w-4 h-4 text-gray-300 mb-6 shrink-0" />
               <PipelineStep
                 value={submitted}
-                label="Soumis NHS"
-                sub="Dès complet"
+                label={t('nhs.pipeline.step.submitted.label')}
+                sub={t('nhs.pipeline.step.submitted.sub')}
                 pct={p(submitted, initialEmail)}
               />
             </div>
