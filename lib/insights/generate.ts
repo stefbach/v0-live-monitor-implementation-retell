@@ -2,7 +2,7 @@ import { getAnthropic, ANTHROPIC_MODEL } from '@/lib/llm'
 import { buildSystemPrompt, INSIGHTS_TOOL, buildUserMessage } from './prompts'
 import type { InsightsCallInput, InsightsResult } from './types'
 
-const MAX_CALLS_TO_LLM = 60 // keep total Sonnet response time under Vercel's 60s timeout
+const MAX_CALLS_TO_LLM = 400 // safety cap (Vercel Pro: maxDuration 300s)
 
 interface GenerateArgs {
   calls: InsightsCallInput[]
@@ -18,8 +18,8 @@ function selectCalls(calls: InsightsCallInput[]): InsightsCallInput[] {
   const rest = calls.filter(
     (c) => c.qualification !== 'RDV MEDECIN' && c.qualification !== 'PAS INTERESSE'
   )
-  const budget = MAX_CALLS_TO_LLM - rdv.length - Math.min(lost.length, 20)
-  return [...rdv, ...lost.slice(0, 20), ...rest.slice(0, Math.max(budget, 0))]
+  const budget = MAX_CALLS_TO_LLM - rdv.length - Math.min(lost.length, 60)
+  return [...rdv, ...lost.slice(0, 60), ...rest.slice(0, Math.max(budget, 0))]
 }
 
 function aggregateStats(calls: InsightsCallInput[]) {
@@ -190,7 +190,7 @@ export async function generateInsights({
     disconnect: c.disconnection_reason ?? null,
     attempt: c.attempt_number,
     answered: c.answered,
-    summary: (c.summary ?? '').slice(0, 250),
+    summary: (c.summary ?? '').slice(0, 600),
   }))
 
   const userMessage = buildUserMessage({

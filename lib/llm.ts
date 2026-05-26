@@ -45,7 +45,4 @@ export function anthropicConfigured(): boolean {
   return !!process.env.ANTHROPIC_API_KEY
 }
 
-// Sonnet 4.6 — needed for quality of structured analysis. Haiku was too
-// conservative and returned empty arrays for most sections. Combined with
-// reduced input (60 calls, 250 char summaries) to fit Vercel's 60s timeout.
 export const ANTHROPIC_MODEL = 'claude-sonnet-4-6'

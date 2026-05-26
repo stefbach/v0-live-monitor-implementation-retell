@@ -6,7 +6,7 @@ import type { ApiResponse } from '@/lib/types'
 import { anthropicConfigured } from '@/lib/llm'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 60 // seconds — LLM may take 20-40s
+export const maxDuration = 300 // seconds — Vercel Pro cap; Sonnet may take 60-120s on full periods
 
 export async function POST(
   request: Request
