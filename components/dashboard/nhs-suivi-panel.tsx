@@ -4,8 +4,11 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   RefreshCw, AlertTriangle, CheckCircle2, Mail, MessageSquare,
   FileText, Send, Clock, XCircle, ChevronRight, TrendingUp,
+  ArrowLeft, Search, Phone, AtSign, Calendar, Hourglass, User,
 } from 'lucide-react'
 import { useT } from '@/lib/hooks/use-t'
+
+// ── Types ──────────────────────────────────────────────────────────────────
 
 interface NhsStats {
   initial_email_sent: number
@@ -29,18 +32,67 @@ interface NhsStats {
   days_remaining: number
 }
 
+type PatientStatus = 'complets' | 'partiels' | 'sans-reponse' | 'aucun-doc' | 'envoye-nhs'
+
+interface NhsPatient {
+  id: string
+  lead_id: string
+  name: string | null
+  initials: string
+  age: number | null
+  email: string | null
+  phone: string | null
+  status: PatientStatus
+  docs_received: number
+  docs_required: number
+  last_activity: string | null
+  nhs_status: string | null
+  escalade: boolean
+  bank_exception: boolean
+}
+
+interface NhsPatientDetail {
+  patient: NhsPatient
+  documents: Array<{ key: string; required: boolean; received: boolean }>
+  timeline: Array<{
+    kind: 'call' | 'email' | 'whatsapp' | 'doc' | 'response'
+    date: string
+    title_key: string
+    detail: string | null
+  }>
+}
+
+type View =
+  | { name: 'dashboard' }
+  | { name: 'list'; filter: PatientStatus | 'all' }
+  | { name: 'detail'; id: string; from: PatientStatus | 'all' }
+
+// ── Shared bits ────────────────────────────────────────────────────────────
+
+const statusBadgeClass: Record<PatientStatus, string> = {
+  complets:      'bg-emerald-50 text-emerald-700 border-emerald-200',
+  partiels:      'bg-amber-50 text-amber-700 border-amber-200',
+  'sans-reponse':'bg-red-50 text-red-700 border-red-200',
+  'aucun-doc':   'bg-gray-50 text-gray-700 border-gray-200',
+  'envoye-nhs':  'bg-blue-50 text-blue-700 border-blue-200',
+}
+
+const nhsStatusBadgeClass: Record<string, string> = {
+  in_review:       'bg-amber-50 text-amber-700 border-amber-200',
+  additional_info: 'bg-amber-50 text-amber-700 border-amber-200',
+  accepted:        'bg-emerald-50 text-emerald-700 border-emerald-200',
+  refused:         'bg-red-50 text-red-700 border-red-200',
+}
+
 function KpiCard({
-  label,
-  value,
-  sub,
-  variant = 'default',
-  icon: Icon,
+  label, value, sub, variant = 'default', icon: Icon, onClick,
 }: {
   label: string
   value: number
   sub?: string
   variant?: 'default' | 'blue' | 'amber' | 'green' | 'red' | 'neutral'
   icon?: React.ElementType
+  onClick?: () => void
 }) {
   const variants = {
     default: 'bg-white border border-gray-200',
@@ -50,7 +102,6 @@ function KpiCard({
     red:     'bg-white border-l-4 border-l-red-400 border border-gray-200',
     neutral: 'bg-white border-l-4 border-l-gray-300 border border-gray-200',
   }
-
   const valueColors = {
     default: 'text-gray-900',
     blue:    'text-blue-600',
@@ -59,9 +110,12 @@ function KpiCard({
     red:     'text-red-600',
     neutral: 'text-gray-600',
   }
-
   return (
-    <div className={`rounded-xl p-4 shadow-sm ${variants[variant]}`}>
+    <button
+      onClick={onClick}
+      type="button"
+      className={`text-left w-full rounded-xl p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${variants[variant]} ${onClick ? 'cursor-pointer' : 'cursor-default'}`}
+    >
       <div className="flex items-start justify-between mb-2">
         <p className="text-xs font-medium text-gray-500 uppercase tracking-wide leading-tight">
           {label}
@@ -71,10 +125,8 @@ function KpiCard({
       <p className={`text-3xl font-semibold tabular-nums ${valueColors[variant]}`}>
         {value}
       </p>
-      {sub && (
-        <p className="text-xs text-gray-400 mt-1.5 leading-tight">{sub}</p>
-      )}
-    </div>
+      {sub && <p className="text-xs text-gray-400 mt-1.5 leading-tight">{sub}</p>}
+    </button>
   )
 }
 
@@ -90,18 +142,14 @@ function SectionLabel({ icon, children }: { icon: string; children: string }) {
 }
 
 function PipelineStep({
-  value,
-  label,
-  sub,
-  pct,
-}: {
-  value: number
-  label: string
-  sub: string
-  pct: number
-}) {
+  value, label, sub, pct, onClick,
+}: { value: number; label: string; sub: string; pct: number; onClick?: () => void }) {
   return (
-    <div className="flex-1 flex flex-col items-center gap-1 text-center">
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex-1 flex flex-col items-center gap-1 text-center rounded-lg p-2 hover:bg-blue-50 transition-colors"
+    >
       <div className="text-xl font-semibold tabular-nums text-gray-800">{value}</div>
       <div className="text-xs font-medium text-gray-600">{label}</div>
       <div className="text-xs text-gray-400">{sub}</div>
@@ -112,12 +160,87 @@ function PipelineStep({
         />
       </div>
       <div className="text-xs text-blue-500 font-medium">{pct}%</div>
+    </button>
+  )
+}
+
+function Breadcrumb({
+  items,
+}: {
+  items: Array<{ label: string; onClick?: () => void }>
+}) {
+  return (
+    <nav className="flex items-center gap-1.5 text-sm">
+      {items.map((item, i) => {
+        const isLast = i === items.length - 1
+        return (
+          <span key={i} className="flex items-center gap-1.5">
+            {i > 0 && <ChevronRight className="w-3.5 h-3.5 text-gray-300" />}
+            {isLast || !item.onClick ? (
+              <span className="text-gray-500">{item.label}</span>
+            ) : (
+              <button
+                onClick={item.onClick}
+                className="text-blue-600 hover:underline font-medium"
+              >
+                {item.label}
+              </button>
+            )}
+          </span>
+        )
+      })}
+    </nav>
+  )
+}
+
+// ── Main panel ─────────────────────────────────────────────────────────────
+
+export function NhsSuiviPanel() {
+  const { t, lang } = useT()
+  const [view, setView] = useState<View>({ name: 'dashboard' })
+
+  return (
+    <div className="space-y-6 pb-8">
+      {view.name === 'dashboard' && (
+        <DashboardView
+          t={t}
+          lang={lang}
+          onOpenList={(filter) => setView({ name: 'list', filter })}
+        />
+      )}
+      {view.name === 'list' && (
+        <ListView
+          t={t}
+          lang={lang}
+          filter={view.filter}
+          onBack={() => setView({ name: 'dashboard' })}
+          onChangeFilter={(filter) => setView({ name: 'list', filter })}
+          onOpenPatient={(id) => setView({ name: 'detail', id, from: view.filter })}
+        />
+      )}
+      {view.name === 'detail' && (
+        <DetailView
+          t={t}
+          lang={lang}
+          id={view.id}
+          fromFilter={view.from}
+          onBackDashboard={() => setView({ name: 'dashboard' })}
+          onBackList={() => setView({ name: 'list', filter: view.from })}
+        />
+      )}
     </div>
   )
 }
 
-export function NhsSuiviPanel() {
-  const { t, lang } = useT()
+// ── View 1: Dashboard ──────────────────────────────────────────────────────
+
+function DashboardView({
+  t, lang, onOpenList,
+}: {
+  t: (k: string) => string
+  lang: 'fr' | 'en'
+  onOpenList: (filter: PatientStatus | 'all') => void
+}) {
   const [stats, setStats] = useState<NhsStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -139,9 +262,7 @@ export function NhsSuiviPanel() {
     }
   }, [])
 
-  useEffect(() => {
-    fetchStats()
-  }, [fetchStats])
+  useEffect(() => { fetchStats() }, [fetchStats])
 
   const submitted = stats?.submitted ?? 0
   const target    = stats?.monthly_target ?? 30
@@ -155,23 +276,18 @@ export function NhsSuiviPanel() {
 
   const p = (v: number, base: number) =>
     base > 0 ? Math.round((v / base) * 100) : 0
-
   const plural = (key: string, n: number) =>
     t(`${key}.${n > 1 ? 'other' : 'one'}`)
-
   const locale = lang === 'fr' ? 'fr-FR' : 'en-GB'
 
   return (
-    <div className="space-y-6 pb-8">
+    <>
+      <Breadcrumb items={[{ label: t('nhs.breadcrumb.overview') }]} />
 
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">
-            {t('nhs.title')}
-          </h2>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {t('nhs.subtitle')}
-          </p>
+          <h2 className="text-lg font-semibold text-gray-900">{t('nhs.title')}</h2>
+          <p className="text-sm text-gray-500 mt-0.5">{t('nhs.subtitle')}</p>
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs text-gray-400">
@@ -204,6 +320,7 @@ export function NhsSuiviPanel() {
 
       {stats && (
         <>
+          {/* Objectif mensuel */}
           <div className="rounded-xl p-5 bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-md">
             <div className="flex items-center justify-between">
               <div>
@@ -237,8 +354,13 @@ export function NhsSuiviPanel() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex items-center gap-4 rounded-xl p-4 bg-red-50 border border-red-200 cursor-pointer hover:bg-red-100 transition-colors">
+          {/* Alertes — stacked vertically */}
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={() => onOpenList('sans-reponse')}
+              className="w-full flex items-center gap-4 rounded-xl p-4 bg-red-50 border border-red-200 hover:bg-red-100 transition-colors text-left"
+            >
               <div className="w-8 h-8 rounded-full bg-red-500 flex items-center justify-center shrink-0">
                 <AlertTriangle className="w-4 h-4 text-white" />
               </div>
@@ -252,9 +374,13 @@ export function NhsSuiviPanel() {
               <span className="text-3xl font-bold text-red-600 tabular-nums shrink-0">
                 {stats.no_response_3j}
               </span>
-            </div>
+            </button>
 
-            <div className="flex items-center gap-4 rounded-xl p-4 bg-emerald-50 border border-emerald-200 cursor-pointer hover:bg-emerald-100 transition-colors">
+            <button
+              type="button"
+              onClick={() => onOpenList('complets')}
+              className="w-full flex items-center gap-4 rounded-xl p-4 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 transition-colors text-left"
+            >
               <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center shrink-0">
                 <CheckCircle2 className="w-4 h-4 text-white" />
               </div>
@@ -270,9 +396,10 @@ export function NhsSuiviPanel() {
               <span className="text-3xl font-bold text-emerald-600 tabular-nums shrink-0">
                 {stats.ready_to_submit}
               </span>
-            </div>
+            </button>
           </div>
 
+          {/* Communication */}
           <div>
             <SectionLabel icon="📧">{t('nhs.section.communication')}</SectionLabel>
             <div className="grid grid-cols-4 gap-4">
@@ -282,6 +409,7 @@ export function NhsSuiviPanel() {
                 sub={t('nhs.comm.initialEmail.sub')}
                 variant="blue"
                 icon={Mail}
+                onClick={() => onOpenList('all')}
               />
               <KpiCard
                 label={t('nhs.comm.relanceEmail.label')}
@@ -289,6 +417,7 @@ export function NhsSuiviPanel() {
                 sub={t('nhs.comm.relanceEmail.sub')}
                 variant="amber"
                 icon={Mail}
+                onClick={() => onOpenList('all')}
               />
               <KpiCard
                 label={t('nhs.comm.relanceWhatsapp.label')}
@@ -296,6 +425,7 @@ export function NhsSuiviPanel() {
                 sub={t('nhs.comm.relanceWhatsapp.sub')}
                 variant="amber"
                 icon={MessageSquare}
+                onClick={() => onOpenList('all')}
               />
               <KpiCard
                 label={t('nhs.comm.responses.label')}
@@ -304,16 +434,18 @@ export function NhsSuiviPanel() {
                   stats.initial_email_sent > 0
                     ? t('nhs.comm.responses.rateTpl').replace(
                         '{n}',
-                        String(p(stats.responses_received, stats.initial_email_sent))
+                        String(p(stats.responses_received, stats.initial_email_sent)),
                       )
                     : t('nhs.comm.responses.active')
                 }
                 variant="green"
                 icon={TrendingUp}
+                onClick={() => onOpenList('all')}
               />
             </div>
           </div>
 
+          {/* Dossiers */}
           <div>
             <SectionLabel icon="📁">{t('nhs.section.dossiers')}</SectionLabel>
             <div className="grid grid-cols-4 gap-4">
@@ -323,6 +455,7 @@ export function NhsSuiviPanel() {
                 sub={t('nhs.dossier.none.sub')}
                 variant="neutral"
                 icon={FileText}
+                onClick={() => onOpenList('aucun-doc')}
               />
               <KpiCard
                 label={t('nhs.dossier.partial.label')}
@@ -330,6 +463,7 @@ export function NhsSuiviPanel() {
                 sub={t('nhs.dossier.partial.sub')}
                 variant="amber"
                 icon={FileText}
+                onClick={() => onOpenList('partiels')}
               />
               <KpiCard
                 label={t('nhs.dossier.complete.label')}
@@ -337,6 +471,7 @@ export function NhsSuiviPanel() {
                 sub={t('nhs.dossier.complete.sub')}
                 variant="green"
                 icon={CheckCircle2}
+                onClick={() => onOpenList('complets')}
               />
               <KpiCard
                 label={t('nhs.dossier.noResponse.label')}
@@ -344,10 +479,12 @@ export function NhsSuiviPanel() {
                 sub={t('nhs.dossier.noResponse.sub')}
                 variant="red"
                 icon={AlertTriangle}
+                onClick={() => onOpenList('sans-reponse')}
               />
             </div>
           </div>
 
+          {/* NHS tracking */}
           <div>
             <SectionLabel icon="🏥">{t('nhs.section.nhsTracking')}</SectionLabel>
             <div className="grid grid-cols-4 gap-4">
@@ -357,6 +494,7 @@ export function NhsSuiviPanel() {
                 sub={t('nhs.tracking.sent.sub')}
                 variant="blue"
                 icon={Send}
+                onClick={() => onOpenList('envoye-nhs')}
               />
               <KpiCard
                 label={t('nhs.tracking.inReview.label')}
@@ -364,6 +502,7 @@ export function NhsSuiviPanel() {
                 sub={t('nhs.tracking.inReview.sub')}
                 variant="amber"
                 icon={Clock}
+                onClick={() => onOpenList('envoye-nhs')}
               />
               <KpiCard
                 label={t('nhs.tracking.accepted.label')}
@@ -371,6 +510,7 @@ export function NhsSuiviPanel() {
                 sub={t('nhs.tracking.accepted.sub')}
                 variant="green"
                 icon={CheckCircle2}
+                onClick={() => onOpenList('envoye-nhs')}
               />
               <KpiCard
                 label={t('nhs.tracking.refused.label')}
@@ -378,10 +518,12 @@ export function NhsSuiviPanel() {
                 sub={t('nhs.tracking.refused.sub')}
                 variant="red"
                 icon={XCircle}
+                onClick={() => onOpenList('envoye-nhs')}
               />
             </div>
           </div>
 
+          {/* Pipeline */}
           <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-5">
               {t('nhs.section.pipeline')}
@@ -392,6 +534,7 @@ export function NhsSuiviPanel() {
                 label={t('nhs.pipeline.step.initial.label')}
                 sub={t('nhs.pipeline.step.initial.sub')}
                 pct={100}
+                onClick={() => onOpenList('all')}
               />
               <ChevronRight className="w-4 h-4 text-gray-300 mb-6 shrink-0" />
               <PipelineStep
@@ -399,6 +542,7 @@ export function NhsSuiviPanel() {
                 label={t('nhs.pipeline.step.relance.label')}
                 sub={t('nhs.pipeline.step.relance.sub')}
                 pct={p(relanceEmail, initialEmail)}
+                onClick={() => onOpenList('all')}
               />
               <ChevronRight className="w-4 h-4 text-gray-300 mb-6 shrink-0" />
               <PipelineStep
@@ -406,6 +550,7 @@ export function NhsSuiviPanel() {
                 label={t('nhs.pipeline.step.response.label')}
                 sub={t('nhs.pipeline.step.response.sub')}
                 pct={p(responses, initialEmail)}
+                onClick={() => onOpenList('all')}
               />
               <ChevronRight className="w-4 h-4 text-gray-300 mb-6 shrink-0" />
               <PipelineStep
@@ -413,6 +558,7 @@ export function NhsSuiviPanel() {
                 label={t('nhs.pipeline.step.complete.label')}
                 sub={t('nhs.pipeline.step.complete.sub')}
                 pct={p(completeDocs, initialEmail)}
+                onClick={() => onOpenList('complets')}
               />
               <ChevronRight className="w-4 h-4 text-gray-300 mb-6 shrink-0" />
               <PipelineStep
@@ -420,11 +566,542 @@ export function NhsSuiviPanel() {
                 label={t('nhs.pipeline.step.submitted.label')}
                 sub={t('nhs.pipeline.step.submitted.sub')}
                 pct={p(submitted, initialEmail)}
+                onClick={() => onOpenList('envoye-nhs')}
               />
             </div>
           </div>
         </>
       )}
-    </div>
+    </>
+  )
+}
+
+// ── View 2: Patient list ───────────────────────────────────────────────────
+
+function ListView({
+  t, lang, filter, onBack, onChangeFilter, onOpenPatient,
+}: {
+  t: (k: string) => string
+  lang: 'fr' | 'en'
+  filter: PatientStatus | 'all'
+  onBack: () => void
+  onChangeFilter: (f: PatientStatus | 'all') => void
+  onOpenPatient: (id: string) => void
+}) {
+  const [patients, setPatients] = useState<NhsPatient[] | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    fetch('/api/nhs-patients', { cache: 'no-store' })
+      .then(async r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json() as Promise<{ patients: NhsPatient[] }>
+      })
+      .then(d => { if (!cancelled) setPatients(d.patients) })
+      .catch(e => { if (!cancelled) setError(String(e)) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [])
+
+  const locale = lang === 'fr' ? 'fr-FR' : 'en-GB'
+
+  const filtered = (patients ?? []).filter(p => {
+    if (filter !== 'all' && p.status !== filter) return false
+    if (search) {
+      const s = search.toLowerCase()
+      const hay = `${p.name ?? ''} ${p.email ?? ''} ${p.phone ?? ''}`.toLowerCase()
+      if (!hay.includes(s)) return false
+    }
+    return true
+  })
+
+  const filterButtons: Array<{ id: PatientStatus | 'all'; key: string }> = [
+    { id: 'all',          key: 'nhs.list.filter.all' },
+    { id: 'sans-reponse', key: 'nhs.list.filter.escalation' },
+    { id: 'partiels',     key: 'nhs.list.filter.partial' },
+    { id: 'complets',     key: 'nhs.list.filter.complete' },
+    { id: 'envoye-nhs',   key: 'nhs.list.filter.sent' },
+  ]
+
+  return (
+    <>
+      <Breadcrumb
+        items={[
+          { label: t('nhs.breadcrumb.overview'), onClick: onBack },
+          { label: t(`nhs.list.filterLabel.${filter === 'all' ? 'all' : filter}`) },
+        ]}
+      />
+
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">{t('nhs.list.title')}</h2>
+          <p className="text-sm text-gray-500 mt-0.5">{t('nhs.list.subtitle')}</p>
+        </div>
+        <button
+          onClick={onBack}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+        >
+          <ArrowLeft className="w-3 h-3" />
+          {t('nhs.back')}
+        </button>
+      </div>
+
+      {/* Filter chips + search */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {filterButtons.map(b => {
+          const active = filter === b.id
+          return (
+            <button
+              key={b.id}
+              onClick={() => onChangeFilter(b.id)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${
+                active
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              {t(b.key)}
+            </button>
+          )
+        })}
+        <div className="ml-auto relative">
+          <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t('nhs.list.search')}
+            className="pl-7 pr-3 py-1.5 text-xs rounded-full border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
+          />
+        </div>
+      </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
+          {t('nhs.error')} : {error}
+        </div>
+      )}
+
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+        <table className="w-full">
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-200">
+              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">{t('nhs.list.col.patient')}</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">{t('nhs.list.col.status')}</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">{t('nhs.list.col.documents')}</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">{t('nhs.list.col.lastActivity')}</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">{t('nhs.list.col.nhsStatus')}</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">{t('nhs.list.col.actions')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading && (
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">{t('common.loading')}</td></tr>
+            )}
+            {!loading && filtered.length === 0 && (
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">{t('nhs.list.empty')}</td></tr>
+            )}
+            {filtered.map(p => {
+              const pct = p.docs_required > 0
+                ? Math.round((p.docs_received / p.docs_required) * 100)
+                : 0
+              const fillCls =
+                p.status === 'complets' ? 'bg-emerald-500'
+                : pct < 50 ? 'bg-red-400'
+                : 'bg-amber-400'
+              const lastActivity = p.last_activity
+                ? new Date(p.last_activity).toLocaleString(locale, {
+                    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+                  })
+                : '—'
+              const nhsKey = p.nhs_status ? `nhs.badge.${p.nhs_status}` : null
+              return (
+                <tr
+                  key={p.id}
+                  onClick={() => onOpenPatient(p.id)}
+                  className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50 cursor-pointer"
+                >
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 text-xs font-semibold flex items-center justify-center shrink-0">
+                        {p.initials}
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">{p.name ?? '—'}</div>
+                        <div className="text-xs text-gray-500">
+                          {p.age != null ? `${p.age} ${t('nhs.list.years')}` : ''}
+                          {p.phone ? `${p.age != null ? ' · ' : ''}${p.phone}` : ''}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full border ${statusBadgeClass[p.status]}`}>
+                      {t(`nhs.badge.${p.status}`)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 w-44">
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${fillCls}`} style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="text-xs font-medium text-gray-600 tabular-nums">
+                        {p.docs_received}/{p.docs_required}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-600">{lastActivity}</td>
+                  <td className="px-4 py-3">
+                    {nhsKey ? (
+                      <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full border ${nhsStatusBadgeClass[p.nhs_status!] ?? 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+                        {t(nhsKey)}
+                      </span>
+                    ) : <span className="text-xs text-gray-300">—</span>}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                      {p.escalade && (
+                        <button
+                          onClick={() => onOpenPatient(p.id)}
+                          className="px-2.5 py-1 text-xs font-medium rounded-md bg-red-50 text-red-700 border border-red-200 hover:bg-red-100"
+                        >
+                          {t('nhs.list.action.escalation')}
+                        </button>
+                      )}
+                      {p.status === 'complets' && (
+                        <button className="px-2.5 py-1 text-xs font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700">
+                          {t('nhs.list.action.submit')}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => onOpenPatient(p.id)}
+                        className="px-2.5 py-1 text-xs font-medium rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      >
+                        {t('nhs.list.action.view')} →
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
+  )
+}
+
+// ── View 3: Patient detail ─────────────────────────────────────────────────
+
+function DetailView({
+  t, lang, id, fromFilter, onBackDashboard, onBackList,
+}: {
+  t: (k: string) => string
+  lang: 'fr' | 'en'
+  id: string
+  fromFilter: PatientStatus | 'all'
+  onBackDashboard: () => void
+  onBackList: () => void
+}) {
+  const [detail, setDetail] = useState<NhsPatientDetail | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    fetch(`/api/nhs-patients/${encodeURIComponent(id)}`, { cache: 'no-store' })
+      .then(async r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json() as Promise<NhsPatientDetail>
+      })
+      .then(d => { if (!cancelled) setDetail(d) })
+      .catch(e => { if (!cancelled) setError(String(e)) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [id])
+
+  const locale = lang === 'fr' ? 'fr-FR' : 'en-GB'
+
+  if (loading || !detail) {
+    return (
+      <>
+        <Breadcrumb
+          items={[
+            { label: t('nhs.breadcrumb.overview'), onClick: onBackDashboard },
+            { label: t(`nhs.list.filterLabel.${fromFilter === 'all' ? 'all' : fromFilter}`), onClick: onBackList },
+            { label: '…' },
+          ]}
+        />
+        {error
+          ? <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">{t('nhs.error')} : {error}</div>
+          : <div className="text-sm text-gray-400">{t('nhs.detail.loading')}</div>}
+      </>
+    )
+  }
+
+  const { patient, documents, timeline } = detail
+
+  // Journey step states
+  const journey: Array<{ key: string; done: boolean; active: boolean }> = [
+    { key: 'call',     done: !!patient.last_activity,           active: false },
+    { key: 'email',    done: patient.status !== 'aucun-doc' || timeline.some(t => t.kind === 'email'), active: false },
+    { key: 'relance',  done: timeline.some(t => t.title_key === 'nhs.detail.timeline.relanceEmail'),    active: false },
+    { key: 'docs',     done: patient.docs_received >= patient.docs_required, active: patient.status === 'partiels' || patient.status === 'aucun-doc' },
+    { key: 'complete', done: patient.status === 'complets' || patient.status === 'envoye-nhs',         active: patient.status === 'complets' },
+    { key: 'sent',     done: patient.status === 'envoye-nhs', active: patient.status === 'envoye-nhs' && !patient.nhs_status },
+  ]
+
+  const docPct = patient.docs_required > 0
+    ? Math.round((patient.docs_received / patient.docs_required) * 100)
+    : 0
+  const docComplete = patient.docs_received >= patient.docs_required
+
+  return (
+    <>
+      <Breadcrumb
+        items={[
+          { label: t('nhs.breadcrumb.overview'), onClick: onBackDashboard },
+          { label: t(`nhs.list.filterLabel.${fromFilter === 'all' ? 'all' : fromFilter}`), onClick: onBackList },
+          { label: patient.name ?? '—' },
+        ]}
+      />
+
+      {/* Header */}
+      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm flex items-start justify-between gap-4">
+        <div className="flex items-start gap-4">
+          <div className="w-14 h-14 rounded-full bg-blue-50 border-2 border-blue-200 text-blue-700 text-xl font-semibold flex items-center justify-center shrink-0">
+            {patient.initials}
+          </div>
+          <div>
+            <h3 className="text-xl font-semibold text-gray-900">{patient.name ?? '—'}</h3>
+            <div className="flex items-center gap-3 text-xs text-gray-500 mt-1 flex-wrap">
+              {patient.age != null && (
+                <span className="inline-flex items-center gap-1">
+                  <User className="w-3 h-3" /> {patient.age} {t('nhs.detail.years')}
+                </span>
+              )}
+              {patient.phone && (
+                <span className="inline-flex items-center gap-1">
+                  <Phone className="w-3 h-3" /> {patient.phone}
+                </span>
+              )}
+              {patient.email && (
+                <span className="inline-flex items-center gap-1">
+                  <AtSign className="w-3 h-3" /> {patient.email}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-col items-end gap-2">
+          <span className={`inline-flex px-2.5 py-1 text-xs font-medium rounded-full border ${statusBadgeClass[patient.status]}`}>
+            {t(`nhs.badge.${patient.status}`)}
+          </span>
+          {patient.last_activity && (
+            <span className="text-xs text-gray-400 inline-flex items-center gap-1">
+              <Calendar className="w-3 h-3" />
+              {new Date(patient.last_activity).toLocaleDateString(locale, { day: '2-digit', month: 'short', year: 'numeric' })}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Journey */}
+      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-4">
+          {t('nhs.detail.journey.title')}
+        </p>
+        <div className="flex items-start gap-0">
+          {journey.map((step, i) => {
+            const dotCls = step.done
+              ? 'bg-emerald-500 border-emerald-500 text-white'
+              : step.active
+                ? 'bg-white border-amber-400 ring-4 ring-amber-50 text-amber-600'
+                : 'bg-gray-50 border-gray-300 text-gray-400'
+            const lineCls = step.done ? 'bg-emerald-400' : 'bg-gray-200'
+            const labelCls = step.done ? 'text-emerald-700 font-semibold' : 'text-gray-500'
+            return (
+              <div key={step.key} className="flex-1 flex flex-col items-center relative">
+                {i < journey.length - 1 && (
+                  <div className={`absolute top-3.5 left-1/2 right-[-50%] h-0.5 ${lineCls}`} />
+                )}
+                <div className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-xs font-bold relative z-10 ${dotCls}`}>
+                  {step.done ? '✓' : step.active ? <Hourglass className="w-3 h-3" /> : ''}
+                </div>
+                <div className={`text-[11px] text-center mt-2 ${labelCls}`}>
+                  {t(`nhs.detail.journey.${step.key}`)}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        {/* Documents checklist */}
+        <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">
+            {t('nhs.detail.docs.title')}
+          </p>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full ${docComplete ? 'bg-emerald-500' : docPct < 50 ? 'bg-red-400' : 'bg-amber-400'}`}
+                style={{ width: `${docPct}%` }}
+              />
+            </div>
+            <span className="text-xs font-medium text-gray-600 tabular-nums">
+              {t('nhs.detail.docs.requiredCount')
+                .replace('{n}', String(patient.docs_received))
+                .replace('{total}', String(patient.docs_required))}
+            </span>
+            <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full border ${
+              docComplete
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : 'bg-amber-50 text-amber-700 border-amber-200'
+            }`}>
+              {docComplete ? t('nhs.detail.docs.statusComplete') : t('nhs.detail.docs.statusIncomplete')}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {documents.map(doc => {
+              const tag = !doc.required ? 'optional' : doc.received ? 'received' : 'pending'
+              const tagCls = tag === 'received'
+                ? 'bg-emerald-50 text-emerald-700'
+                : tag === 'optional'
+                  ? 'bg-amber-50 text-amber-700'
+                  : 'bg-gray-100 text-gray-600'
+              const iconCls = tag === 'received'
+                ? 'bg-emerald-100 text-emerald-700'
+                : tag === 'optional'
+                  ? 'bg-amber-100 text-amber-700'
+                  : 'bg-gray-200 text-gray-500'
+              return (
+                <div key={doc.key} className="flex items-center gap-2.5 p-2.5 rounded-lg border border-gray-200 bg-gray-50">
+                  <div className={`w-5 h-5 rounded flex items-center justify-center text-xs font-bold shrink-0 ${iconCls}`}>
+                    {tag === 'received' ? '✓' : tag === 'optional' ? '○' : '·'}
+                  </div>
+                  <span className="flex-1 text-xs text-gray-700">{t(`nhs.doc.${doc.key}`)}</span>
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${tagCls}`}>
+                    {t(`nhs.detail.docs.${tag}`)}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Communications timeline */}
+        <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">
+            {t('nhs.detail.comms.title')}
+          </p>
+          {timeline.length === 0 ? (
+            <p className="text-xs text-gray-400">{t('nhs.detail.comms.empty')}</p>
+          ) : (
+            <div className="space-y-2">
+              {timeline.map((item, i) => {
+                const dotColor = {
+                  call: 'bg-blue-500',
+                  email: 'bg-amber-500',
+                  whatsapp: 'bg-emerald-500',
+                  doc: 'bg-gray-500',
+                  response: 'bg-emerald-500',
+                }[item.kind]
+                return (
+                  <div key={i} className="flex gap-3 py-2 border-b border-gray-100 last:border-b-0 text-xs">
+                    <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${dotColor}`} />
+                    <div className="text-gray-400 whitespace-nowrap min-w-[90px]">
+                      {new Date(item.date).toLocaleString(locale, {
+                        day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+                      })}
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-medium text-gray-700">{t(item.title_key)}</div>
+                      {item.detail && <div className="text-gray-400 mt-0.5">{item.detail}</div>}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* NHS S2 status pipeline */}
+      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">
+          {t('nhs.detail.nhsStatus.title')}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {(['envoye-nhs', 'in_review', 'additional_info', 'accepted', 'refused'] as const).map(s => {
+            const isActive = patient.nhs_status === s ||
+              (s === 'envoye-nhs' && patient.status === 'envoye-nhs')
+            return (
+              <span
+                key={s}
+                className={`px-2.5 py-1 text-xs font-medium rounded-full border ${
+                  isActive
+                    ? (nhsStatusBadgeClass[s] ?? 'bg-blue-50 text-blue-700 border-blue-200')
+                    : 'bg-gray-50 text-gray-400 border-gray-200'
+                }`}
+              >
+                {t(`nhs.badge.${s}`)}
+              </span>
+            )
+          })}
+        </div>
+        {patient.status !== 'envoye-nhs' && (
+          <p className="text-xs text-gray-400 mt-3">{t('nhs.detail.nhsStatus.notSubmitted')}</p>
+        )}
+      </div>
+
+      {/* Quick actions */}
+      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">
+          {t('nhs.detail.actions.title')}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 inline-flex items-center gap-1.5">
+            <Mail className="w-3 h-3" /> {t('nhs.detail.actions.relanceEmail')}
+          </button>
+          <button className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 inline-flex items-center gap-1.5">
+            <MessageSquare className="w-3 h-3" /> {t('nhs.detail.actions.relanceWhatsapp')}
+          </button>
+          <button
+            disabled={!docComplete}
+            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Send className="w-3 h-3" /> {t('nhs.detail.actions.submit')}
+          </button>
+        </div>
+      </div>
+
+      {/* Escalation */}
+      {patient.escalade && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+          <p className="text-sm font-semibold text-red-700">{t('nhs.detail.escalation.title')}</p>
+          <p className="text-xs text-red-600 mt-1 mb-3">{t('nhs.detail.escalation.desc')}</p>
+          <div className="flex flex-wrap gap-2">
+            <button className="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500 text-white hover:bg-amber-600 inline-flex items-center gap-1.5">
+              <User className="w-3 h-3" /> {t('nhs.detail.escalation.assignRain')}
+            </button>
+            <button className="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500 text-white hover:bg-amber-600 inline-flex items-center gap-1.5">
+              <User className="w-3 h-3" /> {t('nhs.detail.escalation.assignSummer')}
+            </button>
+            <button className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white text-red-700 border border-red-200 hover:bg-red-100">
+              {t('nhs.detail.escalation.note')}
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
