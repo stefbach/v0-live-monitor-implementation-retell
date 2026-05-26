@@ -385,14 +385,14 @@ const fr: Dict = {
   'nhs.doc.doc_nhs_s2_form': 'NHS S2 Form',
   'nhs.doc.doc_s2_provider_declaration': 'S2 Provider Declaration Form',
   'nhs.doc.doc_cpam_certificate': 'CPAM Certificate',
-  'nhs.doc.doc_gp_letter': 'Lettre de justification clinique (GP)',
+  'nhs.doc.doc_clinical_justification_gp': 'Lettre de justification clinique (GP)',
   'nhs.doc.doc_medical_report': 'Rapport médical',
-  'nhs.doc.doc_undue_delay': '« Undue Delay » — rationale',
-  'nhs.doc.doc_patient_authorization': 'Autorisation patient',
-  'nhs.doc.doc_identity': "Pièce d'identité",
-  'nhs.doc.doc_proof_residence': 'Justificatif de résidence (UK)',
+  'nhs.doc.doc_undue_delay_letter': '« Undue Delay » — rationale',
+  'nhs.doc.doc_patient_authorisation': 'Autorisation patient',
+  'nhs.doc.doc_identity_document': "Pièce d'identité",
+  'nhs.doc.doc_proof_of_residence': 'Justificatif de résidence (UK)',
   'nhs.doc.doc_bank_statements': 'Relevés bancaires',
-  'nhs.doc.doc_medical_estimate': 'Devis médical détaillé',
+  'nhs.doc.doc_detailed_medical_estimate': 'Devis médical détaillé',
 }
 
 const en: Dict = {
@@ -775,14 +775,14 @@ const en: Dict = {
   'nhs.doc.doc_nhs_s2_form': 'NHS S2 Form',
   'nhs.doc.doc_s2_provider_declaration': 'S2 Provider Declaration Form',
   'nhs.doc.doc_cpam_certificate': 'CPAM Certificate',
-  'nhs.doc.doc_gp_letter': 'Clinical Justification Letter (GP)',
+  'nhs.doc.doc_clinical_justification_gp': 'Clinical Justification Letter (GP)',
   'nhs.doc.doc_medical_report': 'Medical Report',
-  'nhs.doc.doc_undue_delay': '"Undue Delay" Rationale',
-  'nhs.doc.doc_patient_authorization': 'Patient Authorization Letter',
-  'nhs.doc.doc_identity': 'Identity Document',
-  'nhs.doc.doc_proof_residence': 'Proof of Residence (UK)',
+  'nhs.doc.doc_undue_delay_letter': '"Undue Delay" Rationale',
+  'nhs.doc.doc_patient_authorisation': 'Patient Authorisation Letter',
+  'nhs.doc.doc_identity_document': 'Identity Document',
+  'nhs.doc.doc_proof_of_residence': 'Proof of Residence (UK)',
   'nhs.doc.doc_bank_statements': 'Bank Statements',
-  'nhs.doc.doc_medical_estimate': 'Detailed Medical Estimate',
+  'nhs.doc.doc_detailed_medical_estimate': 'Detailed Medical Estimate',
 }
 
 const DICTS: Record<Lang, Dict> = { fr, en }

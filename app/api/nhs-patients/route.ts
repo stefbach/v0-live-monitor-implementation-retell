@@ -14,14 +14,14 @@ export const NHS_DOCS = [
   { key: 'doc_nhs_s2_form',              required: true },
   { key: 'doc_s2_provider_declaration',  required: true },
   { key: 'doc_cpam_certificate',         required: true },
-  { key: 'doc_gp_letter',                required: true },
-  { key: 'doc_medical_report',           required: true },
-  { key: 'doc_undue_delay',              required: true },
-  { key: 'doc_patient_authorization',    required: true },
-  { key: 'doc_identity',                 required: true },
-  { key: 'doc_proof_residence',          required: true },
-  { key: 'doc_bank_statements',          required: false },
-  { key: 'doc_medical_estimate',         required: true },
+  { key: 'doc_clinical_justification_gp', required: true },
+  { key: 'doc_medical_report',            required: true },
+  { key: 'doc_undue_delay_letter',        required: true },
+  { key: 'doc_patient_authorisation',     required: true },
+  { key: 'doc_identity_document',         required: true },
+  { key: 'doc_proof_of_residence',        required: true },
+  { key: 'doc_bank_statements',           required: false },
+  { key: 'doc_detailed_medical_estimate', required: true },
 ] as const
 
 type DossierRow = Record<string, unknown> & {
