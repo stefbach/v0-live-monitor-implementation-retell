@@ -45,4 +45,6 @@ export function anthropicConfigured(): boolean {
   return !!process.env.ANTHROPIC_API_KEY
 }
 
-export const ANTHROPIC_MODEL = 'claude-sonnet-4-6'
+// Haiku 4.5 — 3-4× faster than Sonnet, fits within Vercel's serverless
+// function timeout while keeping high-quality structured output.
+export const ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001'
