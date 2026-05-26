@@ -2,7 +2,7 @@ import { getAnthropic, ANTHROPIC_MODEL } from '@/lib/llm'
 import { buildSystemPrompt, INSIGHTS_TOOL, buildUserMessage } from './prompts'
 import type { InsightsCallInput, InsightsResult } from './types'
 
-const MAX_CALLS_TO_LLM = 80 // keep response time under Vercel's function timeout
+const MAX_CALLS_TO_LLM = 60 // keep total Sonnet response time under Vercel's 60s timeout
 
 interface GenerateArgs {
   calls: InsightsCallInput[]
@@ -190,7 +190,7 @@ export async function generateInsights({
     disconnect: c.disconnection_reason ?? null,
     attempt: c.attempt_number,
     answered: c.answered,
-    summary: (c.summary ?? '').slice(0, 300),
+    summary: (c.summary ?? '').slice(0, 250),
   }))
 
   const userMessage = buildUserMessage({
