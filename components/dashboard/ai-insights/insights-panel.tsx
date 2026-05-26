@@ -23,6 +23,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useInsights } from '@/lib/hooks/use-insights'
 import { useFiltersStore } from '@/lib/stores/filters-store'
 import { PERIODS } from '@/lib/filters'
+import { InsightsChatbox } from './chatbox'
 import { CallDetailSheet } from '@/components/dashboard/call-detail-sheet'
 import type { CallLogEnriched } from '@/lib/types'
 import type {
@@ -183,6 +184,12 @@ export function InsightsPanel({ filteredCalls }: Props) {
       {(insights.optimization_hypotheses ?? []).length > 0 && (
         <OptimizationHypotheses hypotheses={insights.optimization_hypotheses ?? []} />
       )}
+
+      <InsightsChatbox
+        filteredCalls={filteredCalls}
+        insights={insights}
+        periodLabel={periodLabel(filters.period)}
+      />
 
       <p className="text-[10px] text-muted-foreground italic text-center">
         ⚠️ Les suggestions de l&apos;IA sont des hypothèses à valider, pas des vérités. Les
