@@ -183,7 +183,6 @@ export async function generateInsights({
   const compact = selected.map((c) => ({
     id: c.call_id,
     qualification: c.qualification ?? 'UNKNOWN',
-    sentiment: c.sentiment ?? null,
     duration_s: c.duration_seconds,
     hour: c.hour_of_day,
     dow: c.day_of_week,

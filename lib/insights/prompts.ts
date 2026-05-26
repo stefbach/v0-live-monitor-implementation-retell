@@ -194,26 +194,43 @@ export const INSIGHTS_TOOL: Anthropic.Tool = {
         sentiment: {
           type: 'object',
           required: ['average_score', 'distribution', 'hot_leads'],
+          description:
+            "OBLIGATOIRE — tu DOIS inférer le sentiment à partir des résumés textuels. Ne renvoie JAMAIS 0/0/0 quand le corpus contient des résumés exploitables.",
           properties: {
-            average_score: { type: 'number', description: 'Score moyen de 0 à 10' },
+            average_score: {
+              type: 'number',
+              description:
+                "Score moyen 0-10 calculé en lisant les résumés (0 = très négatif, 5 = neutre, 10 = très positif). DOIT être > 0 dès qu'il y a au moins 1 résumé.",
+            },
             distribution: {
               type: 'object',
               required: ['positive', 'neutral', 'negative'],
+              description:
+                'Compte d\'appels classés positif / neutre / négatif. La somme DOIT être égale au nombre d\'appels avec un résumé exploitable.',
               properties: {
-                positive: { type: 'number' },
-                neutral: { type: 'number' },
-                negative: { type: 'number' },
+                positive: { type: 'number', description: "Nombre d'appels positifs" },
+                neutral: { type: 'number', description: "Nombre d'appels neutres" },
+                negative: { type: 'number', description: "Nombre d'appels négatifs" },
               },
             },
             hot_leads: {
               type: 'array',
+              minItems: 3,
               maxItems: 5,
+              description:
+                '3 à 5 prospects chauds à rappeler en priorité : intérêt clair, question concrète, demande de rappel précis, ou intention forte exprimée dans le résumé.',
               items: {
                 type: 'object',
                 required: ['call_id', 'reason'],
                 properties: {
-                  call_id: { type: 'string' },
-                  reason: { type: 'string' },
+                  call_id: {
+                    type: 'string',
+                    description: "L'identifiant exact du call_id source",
+                  },
+                  reason: {
+                    type: 'string',
+                    description: 'Phrase courte expliquant pourquoi ce lead est chaud',
+                  },
                 },
               },
             },
