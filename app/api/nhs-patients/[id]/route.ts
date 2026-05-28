@@ -58,7 +58,7 @@ export async function GET(
     if (!d.lead_id) return NextResponse.json({ error: 'Dossier has no lead_id' }, { status: 400 })
 
     const { data: leadRow, error: lErr } = await sb
-      .from('leads_rdv')
+      .from('leads_testflow_2')
       .select(
         'id, nom, email, numero_telephone, patient_dob, email_sent, whatsapp_sent,' +
           ' relance_email_sent, relance_whatsapp_sent, relance_email_date,' +
