@@ -55,7 +55,29 @@ function transferredAndContinued(
   })
 }
 
+// Confirmation pack (email + whatsapp) sent on the lead. NOT sufficient alone —
+// n8n also sends these for outreach/relance to leads who never answered — so it
+// must be paired with proof of a real answered conversation.
+function callHasConfirmationPack(c: CallLogEnriched): boolean {
+  return c.lead?.email_sent === true && c.lead?.whatsapp_sent === true
+}
+
+// A real conversation: an answered call that lasted more than 5 minutes.
+function isRealConversation(c: CallLogEnriched): boolean {
+  return c.answered && c.duration > RDV_MIN_DURATION_SECONDS
+}
+
 export function isLeadRdvConfirmed(siblings: CallLogEnriched[]): boolean {
+  // Option 2: confirmation pack sent AND the lead had a real answered
+  // conversation (> 5 min) — excludes 0-second / no-answer leads that merely
+  // received outreach messages.
+  if (
+    siblings.some(callHasConfirmationPack) &&
+    siblings.some(isRealConversation)
+  ) {
+    return true
+  }
+  // Fallback: strict Retell call_outcome signals
   return siblings.some(
     (c) => isCallRdvConfirmedAlone(c) || transferredAndContinued(c, siblings)
   )
@@ -140,11 +162,9 @@ const EMPTY_SET = new Set<string>()
 // ─── Per-call effective qualification ────────────────────────────────────────
 //
 // Priority order:
-//  0. Confirmation pack sent (email_sent && whatsapp_sent) — n8n only sets
-//     both after the full confirmation flow completes (post-Victoria), so it
-//     is the most reliable proof of a genuinely confirmed RDV.
 //  1. Strict per-call RDV CONFIRME signal
-//  2. Lead-level RDV CONFIRME (requires confirmedRdvLeadKeys pre-computed)
+//  2. Lead-level RDV CONFIRME (confirmation pack + real conversation, OR
+//     strict call_outcome — both computed in confirmedRdvLeadKeys)
 //  3. Voicemail signals (override everything else below)
 //  4. Human handoff signals
 //  5. call_outcome direct mapping
@@ -152,17 +172,10 @@ const EMPTY_SET = new Set<string>()
 //  7. Intelligent re-route when CRM says RDV but strict check failed
 //  8. Default → pas_de_reponse
 
-export function isLeadConfirmationPackSent(c: CallLogEnriched): boolean {
-  return c.lead?.email_sent === true && c.lead?.whatsapp_sent === true
-}
-
 export function effectiveQualKey(
   c: CallLogEnriched,
   confirmedRdvLeadKeys: Set<string> = EMPTY_SET
 ): QualKey {
-  // 0 — Confirmation pack sent (email + whatsapp) → genuinely confirmed RDV
-  if (isLeadConfirmationPackSent(c)) return 'rdv_confirme'
-
   // 1 & 2 — Strict RDV CONFIRME
   if (isCallRdvConfirmedAlone(c)) return 'rdv_confirme'
   const lk = leadGroupKey(c)
