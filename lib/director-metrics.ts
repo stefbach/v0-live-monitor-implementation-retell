@@ -1,10 +1,10 @@
 import type { CallLogEnriched, Lead } from './types'
 import { qualKeyFromRaw, type QualKey } from './qualifications'
 import { effectiveQualKey } from './rdv'
-import { leadGroupKey, hasMetadata, agentLevel } from './lead-key'
+import { leadGroupKey, hasMetadata, agentLevel, callAgentLevel } from './lead-key'
 
 // Re-export for backwards compatibility with existing imports
-export { leadGroupKey, hasMetadata, agentLevel }
+export { leadGroupKey, hasMetadata, agentLevel, callAgentLevel }
 
 // ─── KPI banner ─────────────────────────────────────────────────────────────
 
@@ -183,7 +183,7 @@ export function computeAgentBuckets(calls: CallLogEnriched[]): AgentBuckets {
   for (const c of calls) {
     const k = leadKey(c)
     if (!k) continue
-    const lvl = agentLevel(c.agentId, c.agentName)
+    const lvl = callAgentLevel(c)
     if (!lvl) continue
     if (!byLead.has(k)) byLead.set(k, new Set())
     byLead.get(k)!.add(lvl)
@@ -208,7 +208,7 @@ export function callsForAgentBucket(
   for (const c of calls) {
     const k = leadKey(c)
     if (!k) continue
-    const lvl = agentLevel(c.agentId, c.agentName)
+    const lvl = callAgentLevel(c)
     if (!lvl) continue
     if (!byLead.has(k)) byLead.set(k, new Set())
     byLead.get(k)!.add(lvl)

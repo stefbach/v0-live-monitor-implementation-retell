@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button'
 import { DirectionIcon } from '../direction-indicator'
 import { normalizePhone, pickCounterpartyNumber } from '@/lib/phone'
 import { CRENEAUX } from '@/lib/timezone'
-import { agentLevel, leadGroupKey } from '@/lib/lead-key'
+import { callAgentLevel, leadGroupKey } from '@/lib/lead-key'
 import { formatBmi } from '@/lib/bmi'
 import type { CallLogEnriched, Lead } from '@/lib/types'
 import type { Anomaly } from '@/lib/live-alerts'
@@ -254,7 +254,7 @@ export function AnomalyDetailSheet({
             ) : (
               <ul className="space-y-2">
                 {calls.slice(0, 60).map((c) => {
-                  const lvl = agentLevel(c.agentId, c.agentName)
+                  const lvl = callAgentLevel(c)
                   const counterparty = pickCounterpartyNumber(
                     c.direction,
                     c.fromNumber,

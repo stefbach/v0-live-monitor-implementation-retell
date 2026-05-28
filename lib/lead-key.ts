@@ -42,3 +42,19 @@ export function agentLevel(
   if (/\bagent\s*3\b/.test(n) || n.includes('victoria')) return 3
   return null
 }
+
+const REACHED_AGENT_LEVEL: Record<string, 1 | 2 | 3> = {
+  charlotte: 1,
+  isabelle: 2,
+  victoria: 3,
+}
+
+// Furthest agent a call reached. Agents swap WITHIN a single Retell call
+// (Charlotte → Isabelle → Victoria), so the call's agent_id is always the
+// initiating agent (Charlotte). The reached_agent field from Retell's
+// post-call analysis is the source of truth; fall back to agent_id/name.
+export function callAgentLevel(c: CallLogEnriched): 1 | 2 | 3 | null {
+  const ra = c.analysis?.reachedAgent?.toLowerCase().trim()
+  if (ra && REACHED_AGENT_LEVEL[ra]) return REACHED_AGENT_LEVEL[ra]
+  return agentLevel(c.agentId, c.agentName)
+}

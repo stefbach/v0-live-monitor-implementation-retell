@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Skeleton } from '@/components/ui/skeleton'
 import { useFiltersStore } from '@/lib/stores/filters-store'
 import { useRdvStore } from '@/lib/stores/rdv-store'
-import { agentLevel, leadGroupKey } from '@/lib/lead-key'
+import { callAgentLevel, leadGroupKey } from '@/lib/lead-key'
 import { effectiveQualKey } from '@/lib/rdv'
 import type { CallLogEnriched } from '@/lib/types'
 
@@ -53,7 +53,7 @@ export function AgentPerformance({
 
   const rows: LevelRow[] = useMemo(() => {
     return LEVELS.map(({ level, displayName }) => {
-      const calls = filteredCalls.filter((c) => agentLevel(c.agentId, c.agentName) === level)
+      const calls = filteredCalls.filter((c) => callAgentLevel(c) === level)
       const agentIds = [
         ...new Set(calls.map((c) => c.agentId).filter(Boolean) as string[]),
       ]

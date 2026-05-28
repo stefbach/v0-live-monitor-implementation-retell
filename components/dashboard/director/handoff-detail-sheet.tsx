@@ -32,7 +32,7 @@ import { DirectionIcon } from '../direction-indicator'
 import { QUAL_META } from '@/lib/qualifications'
 import { effectiveQualKey } from '@/lib/rdv'
 import { useRdvStore } from '@/lib/stores/rdv-store'
-import { agentLevel, leadGroupKey } from '@/lib/lead-key'
+import { callAgentLevel, leadGroupKey } from '@/lib/lead-key'
 import { CRENEAUX } from '@/lib/timezone'
 import { formatBmi } from '@/lib/bmi'
 import type { CallLogEnriched } from '@/lib/types'
@@ -255,7 +255,7 @@ function CallEntry({
   const confirmedRdvLeadKeys = useRdvStore((s) => s.confirmedRdvLeadKeys)
   const [audioTime, setAudioTime] = useState(0)
   const q = QUAL_META[effectiveQualKey(call, confirmedRdvLeadKeys)]
-  const lvl = agentLevel(call.agentId, call.agentName)
+  const lvl = callAgentLevel(call)
 
   return (
     <li className="rounded-md border border-border/50 bg-muted/10">

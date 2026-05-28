@@ -33,7 +33,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { AudioPlayer } from './audio-player'
 import { TranscriptViewer } from './transcript-viewer'
 import { useCallDetail } from '@/lib/hooks/use-calls'
-import { agentLevel } from '@/lib/director-metrics'
+import { callAgentLevel } from '@/lib/director-metrics'
 import { effectiveQualKey } from '@/lib/rdv'
 import { useRdvStore } from '@/lib/stores/rdv-store'
 import { QUAL_META } from '@/lib/qualifications'
@@ -320,7 +320,7 @@ export function CallDetailSheet({
                 </p>
                 <ol className="space-y-1.5">
                   {siblingCalls.map((sc, i) => {
-                    const lvl = agentLevel(sc.agentId, sc.agentName)
+                    const lvl = callAgentLevel(sc)
                     const isCurrent = sc.callId === call.callId
                     return (
                       <li key={sc.callId}>

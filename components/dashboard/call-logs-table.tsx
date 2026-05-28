@@ -20,7 +20,7 @@ import { TableSkeleton } from './skeleton-loaders'
 import { DirectionIcon } from './direction-indicator'
 import { QUAL_META } from '@/lib/qualifications'
 import { CRENEAUX } from '@/lib/timezone'
-import { agentLevel } from '@/lib/director-metrics'
+import { callAgentLevel } from '@/lib/director-metrics'
 import { effectiveQualKey } from '@/lib/rdv'
 import { useRdvStore } from '@/lib/stores/rdv-store'
 import { useT } from '@/lib/hooks/use-t'
@@ -64,7 +64,7 @@ export function CallLogsTable({
     for (const c of calls) {
       const k = c.meta?.leadId ?? c.lead?.id
       if (!k) continue
-      const lvl = agentLevel(c.agentId, c.agentName)
+      const lvl = callAgentLevel(c)
       if (!lvl) continue
       if (!byLead.has(k)) byLead.set(k, new Set())
       byLead.get(k)!.add(lvl)
@@ -164,7 +164,7 @@ export function CallLogsTable({
               {paginated.map((call) => {
                 const lead = call.lead
                 const q = QUAL_META[effectiveQualKey(call, confirmedRdvLeadKeys)]
-                const lvl = agentLevel(call.agentId, call.agentName)
+                const lvl = callAgentLevel(call)
                 const leadKey = call.meta?.leadId ?? lead?.id
                 const isMulti = leadKey ? multiAgentLeads.has(leadKey) : false
                 return (

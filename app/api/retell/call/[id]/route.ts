@@ -187,6 +187,7 @@ export async function GET(
             availability: str(cad.availability),
             mainConcern: str(cad.main_concern),
             emotionalState: str(cad.emotional_state),
+            reachedAgent: str(cad.reached_agent),
           }
         : null
     const ukParts = getUKParts(Number.isFinite(startMs) ? startMs : undefined)

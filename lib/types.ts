@@ -255,6 +255,7 @@ export interface CallCustomAnalysis {
   availability: string | null
   mainConcern: string | null
   emotionalState: string | null
+  reachedAgent: string | null // furthest agent reached: charlotte | isabelle | victoria
 }
 
 export type CreneauKey = 'creneau_1' | 'creneau_2' | 'creneau_3' | 'hors_creneau'

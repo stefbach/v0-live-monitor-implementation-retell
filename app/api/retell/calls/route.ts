@@ -54,6 +54,7 @@ function extractCustomAnalysis(
       availability: str(cad.availability),
       mainConcern: str(cad.main_concern),
       emotionalState: str(cad.emotional_state),
+      reachedAgent: str(cad.reached_agent),
     },
   }
 }
