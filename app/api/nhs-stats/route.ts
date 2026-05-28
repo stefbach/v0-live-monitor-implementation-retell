@@ -16,7 +16,7 @@ export async function GET() {
 
     const [leadsRes, dossiersRes, objectiveRes] = await Promise.all([
       sb
-        .from('leads_rdv')
+        .from('leads_testflow_2')
         .select(
           'email_sent, whatsapp_sent, relance_email_sent, relance_whatsapp_sent, last_response_date, relance_email_date'
         )

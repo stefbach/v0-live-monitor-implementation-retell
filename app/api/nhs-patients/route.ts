@@ -158,7 +158,7 @@ export async function GET() {
            bank_statement_exception, last_analysed_at, ${docCols}`,
         ),
       sb
-        .from('leads_rdv')
+        .from('leads_testflow_2')
         .select(
           'id, nom, email, numero_telephone, patient_dob, email_sent, whatsapp_sent,' +
             ' relance_email_sent, relance_whatsapp_sent, relance_email_date,' +
