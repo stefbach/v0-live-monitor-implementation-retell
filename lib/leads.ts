@@ -55,6 +55,7 @@ export async function fetchAllLeads(): Promise<Lead[]> {
       other_chronic_conditions: (r.other_chronic_conditions as string) ?? null,
       patient_dob: (r.patient_dob as string) ?? null,
       email_sent: (r.email_sent as boolean) ?? null,
+      whatsapp_sent: (r.whatsapp_sent as boolean) ?? null,
       last_call_datetime: (r.last_call_datetime as string) ?? null,
       call_1_note: (r.call_1_note as string) ?? null,
       call_2_note: (r.call_2_note as string) ?? null,
@@ -120,6 +121,8 @@ export function toLeadSummary(l: Lead): LeadSummary {
     date_rdv: l.date_rdv,
     rappel_rdv: l.rappel_rdv,
     last_call_datetime: l.last_call_datetime,
+    email_sent: l.email_sent,
+    whatsapp_sent: l.whatsapp_sent,
   }
 }
 

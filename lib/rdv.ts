@@ -140,6 +140,9 @@ const EMPTY_SET = new Set<string>()
 // ─── Per-call effective qualification ────────────────────────────────────────
 //
 // Priority order:
+//  0. Confirmation pack sent (email_sent && whatsapp_sent) — n8n only sets
+//     both after the full confirmation flow completes (post-Victoria), so it
+//     is the most reliable proof of a genuinely confirmed RDV.
 //  1. Strict per-call RDV CONFIRME signal
 //  2. Lead-level RDV CONFIRME (requires confirmedRdvLeadKeys pre-computed)
 //  3. Voicemail signals (override everything else below)
@@ -149,10 +152,17 @@ const EMPTY_SET = new Set<string>()
 //  7. Intelligent re-route when CRM says RDV but strict check failed
 //  8. Default → pas_de_reponse
 
+export function isLeadConfirmationPackSent(c: CallLogEnriched): boolean {
+  return c.lead?.email_sent === true && c.lead?.whatsapp_sent === true
+}
+
 export function effectiveQualKey(
   c: CallLogEnriched,
   confirmedRdvLeadKeys: Set<string> = EMPTY_SET
 ): QualKey {
+  // 0 — Confirmation pack sent (email + whatsapp) → genuinely confirmed RDV
+  if (isLeadConfirmationPackSent(c)) return 'rdv_confirme'
+
   // 1 & 2 — Strict RDV CONFIRME
   if (isCallRdvConfirmedAlone(c)) return 'rdv_confirme'
   const lk = leadGroupKey(c)

@@ -142,6 +142,7 @@ export async function GET(
           other_chronic_conditions: (r.other_chronic_conditions as string) ?? null,
           patient_dob: (r.patient_dob as string) ?? null,
           email_sent: (r.email_sent as boolean) ?? null,
+          whatsapp_sent: (r.whatsapp_sent as boolean) ?? null,
           last_call_datetime: (r.last_call_datetime as string) ?? null,
           call_1_note: (r.call_1_note as string) ?? null,
           call_2_note: (r.call_2_note as string) ?? null,
@@ -296,6 +297,8 @@ export async function GET(
             date_rdv: fullLead.date_rdv,
             rappel_rdv: fullLead.rappel_rdv,
             last_call_datetime: fullLead.last_call_datetime,
+            email_sent: fullLead.email_sent,
+            whatsapp_sent: fullLead.whatsapp_sent,
           }
         : null,
       fullLead,

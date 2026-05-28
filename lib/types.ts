@@ -139,6 +139,7 @@ export interface Lead {
   other_chronic_conditions: string | null
   patient_dob: string | null
   email_sent: boolean | null
+  whatsapp_sent: boolean | null
   last_call_datetime: string | null
   call_1_note: string | null
   call_2_note: string | null
@@ -161,6 +162,8 @@ export interface LeadSummary {
   date_rdv: string | null
   rappel_rdv: string | null
   last_call_datetime: string | null
+  email_sent: boolean | null
+  whatsapp_sent: boolean | null
 }
 
 // ─── Business / Cost metrics ────────────────────────────────────────────────
