@@ -14,7 +14,7 @@ export async function GET() {
   try {
     const sb = getSupabase()
 
-    const [leadsRes, dossiersRes, objectiveRes] = await Promise.all([
+    const [leadsRes, leadIdsRes, dossiersRes, objectiveRes] = await Promise.all([
       sb
         .from('leads_rdv')
         .select(
@@ -23,10 +23,14 @@ export async function GET() {
         .not('email', 'is', null)
         .is('raison_ne_pas_rappeler', null),
 
+      // All leads_rdv ids, used to exclude dossiers that belong to test
+      // patients (those join to leads_testflow_2, not leads_rdv).
+      sb.from('leads_rdv').select('id'),
+
       sb
         .from('nhs_dossiers')
         .select(
-          'dossier_status, submission_ready, nhs_submission_status, bank_statement_exception, last_analysed_at'
+          'lead_id, dossier_status, submission_ready, nhs_submission_status, bank_statement_exception, last_analysed_at'
         ),
 
       sb
@@ -46,6 +50,7 @@ export async function GET() {
     }
 
     type DossierRow = {
+      lead_id: string | null
       dossier_status: string | null
       submission_ready: boolean | null
       nhs_submission_status: string | null
@@ -54,7 +59,12 @@ export async function GET() {
     }
 
     const leads = (leadsRes.data ?? []) as LeadRow[]
-    const dossiers = (dossiersRes.data ?? []) as DossierRow[]
+    const leadRdvIds = new Set(
+      ((leadIdsRes.data ?? []) as { id: string }[]).map(r => r.id),
+    )
+    const dossiers = ((dossiersRes.data ?? []) as DossierRow[]).filter(
+      d => d.lead_id != null && leadRdvIds.has(d.lead_id),
+    )
     const target = (objectiveRes.data as { target?: number } | null)?.target ?? 30
 
     const now = new Date()
