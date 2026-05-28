@@ -255,7 +255,7 @@ function CallEntry({
   const confirmedRdvLeadKeys = useRdvStore((s) => s.confirmedRdvLeadKeys)
   const [audioTime, setAudioTime] = useState(0)
   const q = QUAL_META[effectiveQualKey(call, confirmedRdvLeadKeys)]
-  const lvl = agentLevel(call.agentName)
+  const lvl = agentLevel(call.agentId, call.agentName)
 
   return (
     <li className="rounded-md border border-border/50 bg-muted/10">

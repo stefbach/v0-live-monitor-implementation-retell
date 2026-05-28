@@ -64,7 +64,7 @@ export function CallLogsTable({
     for (const c of calls) {
       const k = c.meta?.leadId ?? c.lead?.id
       if (!k) continue
-      const lvl = agentLevel(c.agentName)
+      const lvl = agentLevel(c.agentId, c.agentName)
       if (!lvl) continue
       if (!byLead.has(k)) byLead.set(k, new Set())
       byLead.get(k)!.add(lvl)
@@ -164,7 +164,7 @@ export function CallLogsTable({
               {paginated.map((call) => {
                 const lead = call.lead
                 const q = QUAL_META[effectiveQualKey(call, confirmedRdvLeadKeys)]
-                const lvl = agentLevel(call.agentName)
+                const lvl = agentLevel(call.agentId, call.agentName)
                 const leadKey = call.meta?.leadId ?? lead?.id
                 const isMulti = leadKey ? multiAgentLeads.has(leadKey) : false
                 return (

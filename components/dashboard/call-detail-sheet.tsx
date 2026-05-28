@@ -320,7 +320,7 @@ export function CallDetailSheet({
                 </p>
                 <ol className="space-y-1.5">
                   {siblingCalls.map((sc, i) => {
-                    const lvl = agentLevel(sc.agentName)
+                    const lvl = agentLevel(sc.agentId, sc.agentName)
                     const isCurrent = sc.callId === call.callId
                     return (
                       <li key={sc.callId}>

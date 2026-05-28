@@ -254,7 +254,7 @@ export function AnomalyDetailSheet({
             ) : (
               <ul className="space-y-2">
                 {calls.slice(0, 60).map((c) => {
-                  const lvl = agentLevel(c.agentName)
+                  const lvl = agentLevel(c.agentId, c.agentName)
                   const counterparty = pickCounterpartyNumber(
                     c.direction,
                     c.fromNumber,

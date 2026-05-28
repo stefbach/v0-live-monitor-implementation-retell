@@ -53,7 +53,7 @@ export function AgentPerformance({
 
   const rows: LevelRow[] = useMemo(() => {
     return LEVELS.map(({ level, displayName }) => {
-      const calls = filteredCalls.filter((c) => agentLevel(c.agentName) === level)
+      const calls = filteredCalls.filter((c) => agentLevel(c.agentId, c.agentName) === level)
       const agentIds = [
         ...new Set(calls.map((c) => c.agentId).filter(Boolean) as string[]),
       ]

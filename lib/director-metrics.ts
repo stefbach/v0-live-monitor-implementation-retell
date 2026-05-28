@@ -183,7 +183,7 @@ export function computeAgentBuckets(calls: CallLogEnriched[]): AgentBuckets {
   for (const c of calls) {
     const k = leadKey(c)
     if (!k) continue
-    const lvl = agentLevel(c.agentName)
+    const lvl = agentLevel(c.agentId, c.agentName)
     if (!lvl) continue
     if (!byLead.has(k)) byLead.set(k, new Set())
     byLead.get(k)!.add(lvl)
@@ -208,7 +208,7 @@ export function callsForAgentBucket(
   for (const c of calls) {
     const k = leadKey(c)
     if (!k) continue
-    const lvl = agentLevel(c.agentName)
+    const lvl = agentLevel(c.agentId, c.agentName)
     if (!lvl) continue
     if (!byLead.has(k)) byLead.set(k, new Set())
     byLead.get(k)!.add(lvl)

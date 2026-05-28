@@ -48,7 +48,7 @@ function transferredAndContinued(
   if (!Number.isFinite(myT)) return false
   return siblings.some((s) => {
     if (s.callId === myCall.callId) return false
-    const lvl = agentLevel(s.agentName)
+    const lvl = agentLevel(s.agentId, s.agentName)
     if (lvl !== 2 && lvl !== 3) return false
     const t = new Date(s.startTime).getTime()
     return Number.isFinite(t) && t > myT
