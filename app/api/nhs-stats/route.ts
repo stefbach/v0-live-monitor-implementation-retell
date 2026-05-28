@@ -16,8 +16,10 @@ export async function GET() {
 
     const [leadsRes, dossiersRes, objectiveRes] = await Promise.all([
       sb
-        .from('leads_testflow_2')
-        .select('email_sent, whatsapp_sent')
+        .from('leads_rdv')
+        .select(
+          'email_sent, whatsapp_sent, relance_email_sent, relance_whatsapp_sent, last_response_date, relance_email_date'
+        )
         .not('email', 'is', null)
         .is('raison_ne_pas_rappeler', null),
 
@@ -34,10 +36,13 @@ export async function GET() {
         .maybeSingle(),
     ])
 
-    // leads_testflow_2 is a slim test table: no relance/response tracking.
     type LeadRow = {
       email_sent: boolean | null
       whatsapp_sent: boolean | null
+      relance_email_sent: boolean | null
+      relance_whatsapp_sent: boolean | null
+      last_response_date: string | null
+      relance_email_date: string | null
     }
 
     type DossierRow = {
@@ -53,17 +58,23 @@ export async function GET() {
     const target = (objectiveRes.data as { target?: number } | null)?.target ?? 30
 
     const now = new Date()
+    const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000)
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0)
     const daysRemaining = lastDay.getDate() - now.getDate()
 
     const stats = {
       initial_email_sent:    leads.filter(l => l.email_sent).length,
       initial_whatsapp_sent: leads.filter(l => l.whatsapp_sent).length,
-      // Relance/response tracking does not exist on leads_testflow_2.
-      relance_email_sent:    0,
-      relance_whatsapp_sent: 0,
-      responses_received:    0,
-      no_response_3j:        0,
+      relance_email_sent:    leads.filter(l => l.relance_email_sent).length,
+      relance_whatsapp_sent: leads.filter(l => l.relance_whatsapp_sent).length,
+      responses_received:    leads.filter(l => l.email_sent && l.last_response_date).length,
+      no_response_3j:        leads.filter(l =>
+        l.email_sent &&
+        !l.last_response_date &&
+        l.relance_email_sent &&
+        l.relance_email_date &&
+        new Date(l.relance_email_date) < threeDaysAgo
+      ).length,
 
       no_docs:        dossiers.filter(d => d.dossier_status === 'NO_DOCUMENTS_RECEIVED').length,
       partial_docs:   dossiers.filter(d => d.dossier_status === 'MISSING_DOCUMENTS').length,
