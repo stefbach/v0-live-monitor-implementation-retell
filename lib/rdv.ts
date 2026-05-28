@@ -5,30 +5,37 @@ import { qualKeyFromRaw, type QualKey } from './qualifications'
 // ─── Strict RDV CONFIRME criteria (agreed with user) ────────────────────────
 //
 // A call qualifies RDV CONFIRME on its own when:
-//   1. call_outcome === "consultation_booked"  (any duration), OR
-//   2. call_outcome === "rdv_confirmed" | "rdv_confirme"  AND duration ≥ 60s
+//   - call_outcome is a positive booking signal (consultation_booked,
+//     rdv_confirmed, rdv_confirme) AND the call lasted MORE THAN 5 minutes.
+//     A real booking conversation takes time; a positive outcome on a short
+//     call is not trusted.
 //
 // A LEAD is RDV CONFIRME when one of its calls had:
-//   3. transfer_to_isabelle === true AND duration ≥ 60s AND a later sibling
-//      call by Isabelle (Agent 2) or Victoria (Agent 3) exists on the same
-//      lead chain — proving the handoff actually completed.
+//   - transfer_to_isabelle === true AND the transferring call lasted > 5 min
+//     AND a later sibling call by Isabelle (Agent 2) or Victoria (Agent 3)
+//     exists on the same lead chain — proving the handoff actually completed.
 //
 // CRM value leads_rdv.qualification is NOT trusted for RDV CONFIRME. All
 // other qualifications are derived from Retell signals first, with Supabase
 // as a fallback only for non-RDV categories.
 
-const POSITIVE_OUTCOMES_ANY_DURATION = new Set(['consultation_booked'])
-const POSITIVE_OUTCOMES_NEED_60S = new Set(['rdv_confirmed', 'rdv_confirme'])
+// A genuine RDV booking conversation lasts more than 5 minutes. Below this,
+// even a positive call_outcome is treated as not-yet-confirmed.
+const RDV_MIN_DURATION_SECONDS = 300
+
+const RDV_POSITIVE_OUTCOMES = new Set([
+  'consultation_booked',
+  'rdv_confirmed',
+  'rdv_confirme',
+])
 
 function normOutcome(c: CallLogEnriched): string {
   return (c.analysis?.callOutcome ?? '').toLowerCase().trim()
 }
 
 export function isCallRdvConfirmedAlone(c: CallLogEnriched): boolean {
-  const o = normOutcome(c)
-  if (POSITIVE_OUTCOMES_ANY_DURATION.has(o)) return true
-  if (POSITIVE_OUTCOMES_NEED_60S.has(o) && c.duration >= 60) return true
-  return false
+  if (c.duration <= RDV_MIN_DURATION_SECONDS) return false
+  return RDV_POSITIVE_OUTCOMES.has(normOutcome(c))
 }
 
 function transferredAndContinued(
@@ -36,7 +43,7 @@ function transferredAndContinued(
   siblings: CallLogEnriched[]
 ): boolean {
   if (!myCall.analysis?.transferToIsabelle) return false
-  if (myCall.duration < 60) return false
+  if (myCall.duration <= RDV_MIN_DURATION_SECONDS) return false
   const myT = new Date(myCall.startTime).getTime()
   if (!Number.isFinite(myT)) return false
   return siblings.some((s) => {
