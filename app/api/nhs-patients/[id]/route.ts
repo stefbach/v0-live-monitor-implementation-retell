@@ -61,9 +61,7 @@ export async function GET(
       .from('leads_testflow_2')
       .select(
         'id, nom, email, numero_telephone, patient_dob, email_sent, whatsapp_sent,' +
-          ' relance_email_sent, relance_whatsapp_sent, relance_email_date,' +
-          ' last_response_date, last_call_datetime,' +
-          ' first_mail:"1st_mail", second_mail:"2nd_mail"',
+          ' last_call_datetime, last_updated, first_mail:"1st_mail", second_mail:"2nd_mail"',
       )
       .eq('id', d.lead_id)
       .maybeSingle()
@@ -71,6 +69,7 @@ export async function GET(
     if (lErr) throw lErr
     if (!leadRow) return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
 
+    // leads_testflow_2 is a slim test table without relance/response tracking.
     type L = {
       id: string
       nom: string | null
@@ -79,25 +78,19 @@ export async function GET(
       patient_dob: string | null
       email_sent: boolean | null
       whatsapp_sent: boolean | null
-      relance_email_sent: boolean | null
-      relance_whatsapp_sent: boolean | null
-      relance_email_date: string | null
-      last_response_date: string | null
       last_call_datetime: string | null
+      last_updated: string | null
       first_mail: string | null
       second_mail: string | null
     }
     const l = leadRow as L
 
-    const now = new Date()
-    const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000)
-
-    const patient = buildPatient(d, l, threeDaysAgo)
+    const patient = buildPatient(d, l)
 
     const documents = NHS_DOCS.map(doc => ({
       key: doc.key,
       required: doc.required,
-      received: d[doc.key] === true,
+      received: d[doc.key] === 'received',
     }))
 
     const timeline: NhsPatientDetail['timeline'] = []
@@ -117,27 +110,11 @@ export async function GET(
         detail: null,
       })
     }
-    if (l.relance_email_sent && l.relance_email_date) {
+    if (l.second_mail) {
       timeline.push({
         kind: 'email',
-        date: l.relance_email_date,
+        date: l.second_mail,
         title_key: 'nhs.detail.timeline.relanceEmail',
-        detail: null,
-      })
-    }
-    if (l.relance_whatsapp_sent && l.relance_email_date) {
-      timeline.push({
-        kind: 'whatsapp',
-        date: l.relance_email_date,
-        title_key: 'nhs.detail.timeline.relanceWhatsapp',
-        detail: null,
-      })
-    }
-    if (l.last_response_date) {
-      timeline.push({
-        kind: 'response',
-        date: l.last_response_date,
-        title_key: 'nhs.detail.timeline.response',
         detail: null,
       })
     }
