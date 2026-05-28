@@ -34,8 +34,6 @@ type DossierRow = Record<string, unknown> & {
   last_analysed_at: string | null
 }
 
-// leads_testflow_2 is a slim test table: it lacks relance/response tracking,
-// so those signals are unavailable here.
 type LeadRow = {
   id: string
   nom: string | null
@@ -44,10 +42,12 @@ type LeadRow = {
   patient_dob: string | null
   email_sent: boolean | null
   whatsapp_sent: boolean | null
+  relance_email_sent: boolean | null
+  relance_whatsapp_sent: boolean | null
+  relance_email_date: string | null
+  last_response_date: string | null
   last_call_datetime: string | null
   last_updated: string | null
-  first_mail: string | null
-  second_mail: string | null
 }
 
 export interface NhsPatient {
@@ -98,12 +98,21 @@ function countDocs(d: DossierRow): { received: number; required: number } {
 
 function deriveStatus(
   d: DossierRow,
+  l: LeadRow,
   received: number,
+  threeDaysAgo: Date,
 ): NhsPatient['status'] {
   if (d.dossier_status === 'SUBMITTED' || d.nhs_submission_status != null) return 'envoye-nhs'
   if (d.dossier_status === 'COMPLETE' || d.dossier_status === 'READY_TO_SUBMIT' || d.submission_ready) {
     return 'complets'
   }
+  const noResponse =
+    !!l.email_sent &&
+    !l.last_response_date &&
+    !!l.relance_email_sent &&
+    !!l.relance_email_date &&
+    new Date(l.relance_email_date) < threeDaysAgo
+  if (noResponse) return 'sans-reponse'
   // Key off the dossier_status enum the stats panel uses, so list filters
   // agree with the dashboard counts. Fall back to the received-doc count.
   if (d.dossier_status === 'NO_DOCUMENTS_RECEIVED') return 'aucun-doc'
@@ -112,11 +121,13 @@ function deriveStatus(
   return 'partiels'
 }
 
-export function buildPatient(d: DossierRow, l: LeadRow): NhsPatient {
+export function buildPatient(d: DossierRow, l: LeadRow, threeDaysAgo: Date): NhsPatient {
   const { received, required } = countDocs(d)
-  const status = deriveStatus(d, received)
+  const status = deriveStatus(d, l, received, threeDaysAgo)
   const lastActivity =
     d.last_analysed_at ||
+    l.last_response_date ||
+    l.relance_email_date ||
     l.last_call_datetime ||
     l.last_updated ||
     null
@@ -152,10 +163,11 @@ export async function GET() {
            bank_statement_exception, last_analysed_at, ${docCols}`,
         ),
       sb
-        .from('leads_testflow_2')
+        .from('leads_rdv')
         .select(
           'id, nom, email, numero_telephone, patient_dob, email_sent, whatsapp_sent,' +
-            ' last_call_datetime, last_updated, first_mail:"1st_mail", second_mail:"2nd_mail"',
+            ' relance_email_sent, relance_whatsapp_sent, relance_email_date,' +
+            ' last_response_date, last_call_datetime, last_updated',
         ),
     ])
 
@@ -163,12 +175,15 @@ export async function GET() {
     const leads = (leadsRes.data ?? []) as LeadRow[]
     const leadById = new Map(leads.map(l => [l.id, l]))
 
+    const now = new Date()
+    const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000)
+
     const patients: NhsPatient[] = []
     for (const d of dossiers) {
       if (!d.lead_id) continue
       const lead = leadById.get(d.lead_id)
       if (!lead) continue
-      patients.push(buildPatient(d, lead))
+      patients.push(buildPatient(d, lead, threeDaysAgo))
     }
 
     patients.sort((a, b) => {
