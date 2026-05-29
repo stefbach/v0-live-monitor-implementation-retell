@@ -85,8 +85,8 @@ export function DirectorView({
   >(null)
 
   const kpis = useMemo(
-    () => computeDirectorKpis(filteredCalls, threshold),
-    [filteredCalls, threshold]
+    () => computeDirectorKpis(filteredCalls, threshold, confirmedRdvLeadKeys),
+    [filteredCalls, threshold, confirmedRdvLeadKeys]
   )
   const qualCounts = useMemo(
     () => computeQualificationCounts(filteredCalls, confirmedRdvLeadKeys),
@@ -101,7 +101,7 @@ export function DirectorView({
   )
 
   const openKpi = (id: KpiId, title: string) =>
-    setPanel({ title, calls: callsForKpi(filteredCalls, id, threshold) })
+    setPanel({ title, calls: callsForKpi(filteredCalls, id, threshold, confirmedRdvLeadKeys) })
   const openQual = (key: QualKey, title: string) =>
     setPanel({
       title,

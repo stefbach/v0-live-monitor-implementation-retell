@@ -22,7 +22,8 @@ export interface DirectorKpis {
 
 export function computeDirectorKpis(
   calls: CallLogEnriched[],
-  durationThresholdSec: number
+  durationThresholdSec: number,
+  confirmedRdvLeadKeys: Set<string> = new Set()
 ): DirectorKpis {
   const total = calls.length
   let answered = 0
@@ -38,7 +39,7 @@ export function computeDirectorKpis(
     duration += c.duration
     if (c.analysis?.callbackScheduled) callbacks++
     if (c.duration > durationThresholdSec) over++
-    if (effectiveQualKey(c) === 'rdv_confirme') {
+    if (effectiveQualKey(c, confirmedRdvLeadKeys) === 'rdv_confirme') {
       const k = leadGroupKey(c)
       if (k) rdvLeads.add(k)
     }
@@ -72,14 +73,17 @@ export type KpiId =
 export function callsForKpi(
   calls: CallLogEnriched[],
   kpi: KpiId,
-  thresholdSec: number
+  thresholdSec: number,
+  confirmedRdvLeadKeys: Set<string> = new Set()
 ): CallLogEnriched[] {
   switch (kpi) {
     case 'answered':
       return calls.filter((c) => c.answered)
     case 'rdv':
     case 'conversion':
-      return calls.filter((c) => effectiveQualKey(c) === 'rdv_confirme')
+      return calls.filter(
+        (c) => effectiveQualKey(c, confirmedRdvLeadKeys) === 'rdv_confirme'
+      )
     case 'callbacks':
       return calls.filter((c) => c.analysis?.callbackScheduled)
     case 'over':
