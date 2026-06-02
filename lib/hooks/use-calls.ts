@@ -73,20 +73,32 @@ export function useDashboardData(): DashboardData {
   const filters = useFiltersStore((s) => s.filters)
   const setConfirmedRdvLeadKeys = useRdvStore((s) => s.setConfirmedRdvLeadKeys)
 
-  // Compute the fetch lookback from the selected period so the server only
-  // pulls what we actually need to display. We deliberately fetch a SUPERSET
-  // (e.g. last 30d) instead of a tight window so client-side period switches
-  // don't trigger a re-fetch each time — applyFilters() handles the narrowing.
+  // Align the fetch lookback to the selected period so the server only pulls
+  // what we need. With high-volume customers (5000+ calls/30d) fetching a
+  // fixed 30-day window for "Today" inflates the payload ~30× and slows the
+  // dashboard. Switching periods triggers a re-fetch — acceptable trade-off
+  // for ~5× faster initial load on Today/Yesterday.
+  //
+  // Add a small buffer (1 day for short windows, 1 hour for 30d) to absorb
+  // timezone edge cases and clock skew between the client and Retell.
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000
   const fetchSinceMs = useMemo(() => {
     const { start } = periodRange(filters.period, filters.customStart, filters.customEnd)
-    if (filters.period === 'today' || filters.period === 'yesterday' || filters.period === '7d') {
-      // For short windows, request the last 30d so navigating periods is instant.
-      return Date.now() - 30 * 24 * 60 * 60 * 1000
+    switch (filters.period) {
+      case 'today':
+      case 'yesterday':
+        return start - ONE_DAY_MS // 2-day window covers both today + yesterday
+      case '7d':
+        return start - ONE_DAY_MS // 8 days
+      case '30d':
+        return start - 60 * 60 * 1000 // 30d + 1h
+      case 'all':
+        return 0 // unbounded — server applies its own ceiling
+      case 'custom':
+      default:
+        return Math.max(0, start - ONE_DAY_MS)
     }
-    if (filters.period === '30d') return Date.now() - 30 * 24 * 60 * 60 * 1000
-    if (filters.period === 'all') return 0 // 0 = no filter on server side
-    return start // 'custom' → exact lower bound
-  }, [filters.period, filters.customStart, filters.customEnd])
+  }, [filters.period, filters.customStart, filters.customEnd, ONE_DAY_MS])
 
   const swrKey = `/api/retell/calls?since=${fetchSinceMs}`
 
