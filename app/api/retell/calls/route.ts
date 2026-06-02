@@ -139,12 +139,35 @@ async function fetchAllCallsSince(sinceMs: number): Promise<Record<string, unkno
       const errorBody = await res.text().catch(() => '')
       throw new Error(`Retell API error: ${res.status} ${errorBody}`)
     }
-    const json = (await res.json()) as RetellListCallsResponse
-    const items = Array.isArray(json.items)
-      ? json.items
-      : Array.isArray(json.calls)
-        ? json.calls
-        : []
+    const json = (await res.json()) as unknown
+    // Retell v2 returns the list directly as an array, not wrapped in {items}
+    // or {calls}. Handle all three shapes defensively.
+    let items: Record<string, unknown>[]
+    let nextKey: string | undefined
+    let hasMore = false
+    if (Array.isArray(json)) {
+      items = json as Record<string, unknown>[]
+      // Pure array response: no pagination metadata, infer from page fill.
+      hasMore = items.length === PAGE_LIMIT
+      if (hasMore && items.length > 0) {
+        const last = items[items.length - 1] as { call_id?: string }
+        nextKey = last.call_id
+      }
+    } else {
+      const obj = (json ?? {}) as RetellListCallsResponse
+      items = Array.isArray(obj.items)
+        ? obj.items
+        : Array.isArray(obj.calls)
+          ? obj.calls
+          : []
+      hasMore = obj.has_more === true
+      nextKey = obj.pagination_key
+    }
+    if (page === 0) {
+      console.log(
+        `[calls] page 1: shape=${Array.isArray(json) ? 'array' : 'object'} items=${items.length} hasMore=${hasMore} nextKey=${nextKey ? 'present' : 'absent'}`
+      )
+    }
     all.push(...items)
     if (all.length >= MAX_CALLS_TOTAL) {
       console.warn(
@@ -152,9 +175,10 @@ async function fetchAllCallsSince(sinceMs: number): Promise<Record<string, unkno
       )
       break
     }
-    if (!json.has_more || !json.pagination_key || items.length === 0) break
-    paginationKey = json.pagination_key
+    if (!hasMore || !nextKey || items.length === 0) break
+    paginationKey = nextKey
   }
+  console.log(`[calls] fetched ${all.length} total over ${Math.ceil(all.length / PAGE_LIMIT)} page(s)`)
   return all
 }
 
