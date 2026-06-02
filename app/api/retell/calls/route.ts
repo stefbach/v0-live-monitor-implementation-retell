@@ -60,6 +60,7 @@ function extractCustomAnalysis(
 }
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 interface RichCallsResponse {
   calls: CallLogEnriched[]
@@ -68,6 +69,16 @@ interface RichCallsResponse {
 }
 
 const EMPTY: RichCallsResponse = { calls: [], leads: [], agentNames: {} }
+
+// Retell list-calls is hard-capped at 1000 per page → we must paginate to see
+// the full picture. Caps below keep total cost bounded (1500 calls/day max
+// observed in prod; 30d ≈ 45k → well under the 50k ceiling).
+const MAX_PAGES = 50
+const MAX_CALLS_TOTAL = 50000
+const PAGE_LIMIT = 1000
+// Default lookback when the caller doesn't pass ?since= (e.g. legacy clients).
+// Generous enough to keep historical period filters working out of the box.
+const DEFAULT_LOOKBACK_MS = 60 * 24 * 60 * 60 * 1000 // 60 days
 
 const NO_ANSWER_DISCONNECTS = new Set([
   'dial_no_answer',
@@ -84,7 +95,72 @@ function isAnswered(durationSec: number, disconnect: string | null): boolean {
   return true
 }
 
-export async function GET(): Promise<NextResponse<ApiResponse<RichCallsResponse>>> {
+interface RetellListCallsBody {
+  limit: number
+  sort_order: 'ascending' | 'descending'
+  pagination_key?: string
+  filter_criteria?: {
+    start_timestamp?: { op: 'ge'; type: 'number'; value: number }
+  }
+}
+
+interface RetellListCallsResponse {
+  items?: Record<string, unknown>[]
+  calls?: Record<string, unknown>[] // older shape, kept as a safety net
+  pagination_key?: string
+  has_more?: boolean
+}
+
+async function fetchAllCallsSince(sinceMs: number): Promise<Record<string, unknown>[]> {
+  const all: Record<string, unknown>[] = []
+  let paginationKey: string | undefined
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const body: RetellListCallsBody = {
+      limit: PAGE_LIMIT,
+      sort_order: 'descending',
+      ...(paginationKey ? { pagination_key: paginationKey } : {}),
+      ...(sinceMs > 0
+        ? {
+            filter_criteria: {
+              start_timestamp: { op: 'ge', type: 'number', value: sinceMs },
+            },
+          }
+        : {}),
+    }
+    const res = await fetch('https://api.retellai.com/v2/list-calls', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) {
+      const errorBody = await res.text().catch(() => '')
+      throw new Error(`Retell API error: ${res.status} ${errorBody}`)
+    }
+    const json = (await res.json()) as RetellListCallsResponse
+    const items = Array.isArray(json.items)
+      ? json.items
+      : Array.isArray(json.calls)
+        ? json.calls
+        : []
+    all.push(...items)
+    if (all.length >= MAX_CALLS_TOTAL) {
+      console.warn(
+        `[calls] hit MAX_CALLS_TOTAL=${MAX_CALLS_TOTAL} after page ${page + 1}; truncating`
+      )
+      break
+    }
+    if (!json.has_more || !json.pagination_key || items.length === 0) break
+    paginationKey = json.pagination_key
+  }
+  return all
+}
+
+export async function GET(
+  request: Request
+): Promise<NextResponse<ApiResponse<RichCallsResponse>>> {
   const apiKeyConfigured = !!process.env.RETELL_API_KEY
   const useMockData = process.env.USE_MOCK_DATA === 'true' || !apiKeyConfigured
 
@@ -118,31 +194,22 @@ export async function GET(): Promise<NextResponse<ApiResponse<RichCallsResponse>
     })
   }
 
+  // Parse ?since=<epoch_ms> from the client (selected dashboard period).
+  // Falls back to a 60-day rolling window when the param is absent or invalid
+  // so legacy callers keep working.
+  const url = new URL(request.url)
+  const sinceParam = url.searchParams.get('since')
+  const sinceParsed = sinceParam ? Number(sinceParam) : NaN
+  const sinceMs = Number.isFinite(sinceParsed) && sinceParsed > 0
+    ? sinceParsed
+    : Date.now() - DEFAULT_LOOKBACK_MS
+
   try {
-    const [retellResponse, leads, agentNames] = await Promise.all([
-      fetch('https://api.retellai.com/v2/list-calls', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ limit: 1000, sort_order: 'descending' }),
-      }),
+    const [callsRaw, leads, agentNames] = await Promise.all([
+      fetchAllCallsSince(sinceMs),
       supabaseConfigured() ? fetchAllLeads() : Promise.resolve([] as Lead[]),
       getAgentNameMap(),
     ])
-
-    if (!retellResponse.ok) {
-      const errorBody = await retellResponse.text().catch(() => '')
-      throw new Error(`Retell API error: ${retellResponse.status} ${errorBody}`)
-    }
-
-    const data = await retellResponse.json()
-    const callsRaw: Record<string, unknown>[] = Array.isArray(data)
-      ? data
-      : Array.isArray((data as { calls?: unknown[] })?.calls)
-        ? ((data as { calls: Record<string, unknown>[] }).calls)
-        : []
 
     const leadByPhone = indexLeadsByPhone(leads)
 

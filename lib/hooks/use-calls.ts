@@ -11,7 +11,7 @@ import type {
   BusinessMetrics,
   DashboardFilters,
 } from '@/lib/types'
-import { applyFilters } from '@/lib/filters'
+import { applyFilters, periodRange } from '@/lib/filters'
 import { useFiltersStore } from '@/lib/stores/filters-store'
 import { useRdvStore } from '@/lib/stores/rdv-store'
 import { computeBusinessMetrics } from '@/lib/leads'
@@ -73,8 +73,25 @@ export function useDashboardData(): DashboardData {
   const filters = useFiltersStore((s) => s.filters)
   const setConfirmedRdvLeadKeys = useRdvStore((s) => s.setConfirmedRdvLeadKeys)
 
+  // Compute the fetch lookback from the selected period so the server only
+  // pulls what we actually need to display. We deliberately fetch a SUPERSET
+  // (e.g. last 30d) instead of a tight window so client-side period switches
+  // don't trigger a re-fetch each time — applyFilters() handles the narrowing.
+  const fetchSinceMs = useMemo(() => {
+    const { start } = periodRange(filters.period, filters.customStart, filters.customEnd)
+    if (filters.period === 'today' || filters.period === 'yesterday' || filters.period === '7d') {
+      // For short windows, request the last 30d so navigating periods is instant.
+      return Date.now() - 30 * 24 * 60 * 60 * 1000
+    }
+    if (filters.period === '30d') return Date.now() - 30 * 24 * 60 * 60 * 1000
+    if (filters.period === 'all') return 0 // 0 = no filter on server side
+    return start // 'custom' → exact lower bound
+  }, [filters.period, filters.customStart, filters.customEnd])
+
+  const swrKey = `/api/retell/calls?since=${fetchSinceMs}`
+
   const { data, error, isLoading, mutate } = useSWR<RawCallsData>(
-    '/api/retell/calls',
+    swrKey,
     fetcher,
     {
       refreshInterval: 30000,
