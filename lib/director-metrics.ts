@@ -37,9 +37,15 @@ export function computeDirectorKpis(
     if (c.answered) answered++
     cost += c.cost ?? 0
     duration += c.duration
-    if (c.analysis?.callbackScheduled) callbacks++
     if (c.duration > durationThresholdSec) over++
-    if (effectiveQualKey(c, confirmedRdvLeadKeys) === 'rdv_confirme') {
+    const qual = effectiveQualKey(c, confirmedRdvLeadKeys)
+    // Align "Callbacks demandés" KPI on the RAPPEL card so both surfaces
+    // show the same number. The raw analysis.callbackScheduled flag is set
+    // by Retell on calls that ultimately land in OTHER cards (handoff,
+    // pas_de_reponse, etc.), which created a visual discrepancy between
+    // the KPI (raw flag count) and the card (effective qual = 'rappel').
+    if (qual === 'rappel') callbacks++
+    if (qual === 'rdv_confirme') {
       const k = leadGroupKey(c)
       if (k) rdvLeads.add(k)
     }
@@ -85,7 +91,10 @@ export function callsForKpi(
         (c) => effectiveQualKey(c, confirmedRdvLeadKeys) === 'rdv_confirme'
       )
     case 'callbacks':
-      return calls.filter((c) => c.analysis?.callbackScheduled)
+      // Same definition as the RAPPEL card so the click-through list matches.
+      return calls.filter(
+        (c) => effectiveQualKey(c, confirmedRdvLeadKeys) === 'rappel'
+      )
     case 'over':
       return calls.filter((c) => c.duration > thresholdSec)
     case 'cost':
