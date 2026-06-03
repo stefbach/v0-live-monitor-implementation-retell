@@ -261,8 +261,10 @@ export async function GET(
       const cost =
         typeof costObj?.combined_cost === 'number' ? costObj.combined_cost : null
       const disconnectionReason = (call.disconnection_reason as string) || null
-      const transcriptObj = call.transcript_object as unknown[] | undefined
-      const recordingUrl = (call.recording_url as string) || undefined
+      // transcript_object + recording_url are heavy (~80% of payload size on
+      // list-calls). They're only consumed by detail sheets which fetch
+      // /api/retell/call/[id] on click, so omit them here to keep the list
+      // response light.
       const summary =
         ((call.call_analysis as { call_summary?: string })?.call_summary as string) ||
         (call.call_summary as string) ||
@@ -297,7 +299,6 @@ export async function GET(
         fromNumber,
         toNumber,
         userName: lead?.nom ?? undefined,
-        recordingUrl,
         summary,
         sentiment,
         cost,
@@ -313,9 +314,6 @@ export async function GET(
         inVoicemail,
         voicemailSuspected,
         robotAwareness,
-        transcript: Array.isArray(transcriptObj)
-          ? transcriptObj.map((t, i) => mapTranscript(t, i))
-          : undefined,
         _key: normPhone || (lead?.id ?? ''),
         _ts: Number.isFinite(startMs) ? startMs : 0,
       }
@@ -382,14 +380,3 @@ function mapRetellStatus(
   }
 }
 
-function mapTranscript(t: unknown, i: number) {
-  const obj = (t as Record<string, unknown>) ?? {}
-  const role = (obj.role as string) === 'user' ? 'user' : 'agent'
-  return {
-    id: `${i}`,
-    speaker: role as 'agent' | 'user',
-    text: (obj.content as string) || '',
-    startTime: typeof obj.start === 'number' ? obj.start : 0,
-    endTime: typeof obj.end === 'number' ? obj.end : 0,
-  }
-}
