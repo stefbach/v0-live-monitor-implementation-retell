@@ -349,10 +349,17 @@ export async function GET(
       )
     }
 
-    return NextResponse.json({
-      data: { calls, leads, agentNames },
-      timestamp: new Date().toISOString(),
-    })
+    return NextResponse.json(
+      { data: { calls, leads, agentNames }, timestamp: new Date().toISOString() },
+      {
+        headers: {
+          // Edge cache: serve fresh for 20s, then up to 60s while we
+          // re-build in the background. Safe because the payload only
+          // changes when Retell logs new calls (slow signal).
+          'Cache-Control': 's-maxage=20, stale-while-revalidate=60',
+        },
+      }
+    )
   } catch (error) {
     return NextResponse.json(
       {

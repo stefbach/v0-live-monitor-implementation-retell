@@ -106,8 +106,15 @@ export function useDashboardData(): DashboardData {
     swrKey,
     fetcher,
     {
-      refreshInterval: 30000,
+      // Refresh in the background every 2 min. The Live tab has its own
+      // 5s-poll endpoint, so users who need real-time monitoring use that;
+      // 30s here was wasteful (full ~10 MB refetch + reparse) and caused
+      // perceptible UI jank on slow networks.
+      refreshInterval: 120000,
       revalidateOnFocus: true,
+      // Coalesce duplicate calls (e.g. when several components mount
+      // simultaneously) into a single network request.
+      dedupingInterval: 30000,
     }
   )
 
