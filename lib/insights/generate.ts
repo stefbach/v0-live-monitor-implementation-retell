@@ -9,14 +9,19 @@ interface GenerateArgs {
   periodLabel: string
 }
 
+// All counters and selection use qualification_effective — the same view
+// as the qualification cards on the dashboard. The raw CRM qualification
+// (c.qualification) is still passed alongside for transparency.
 function selectCalls(calls: InsightsCallInput[]): InsightsCallInput[] {
   if (calls.length <= MAX_CALLS_TO_LLM) return calls
-  // Priority: keep all RDV (precious signal), all PAS INTERESSE up to 60,
-  // then fill the rest in chronological order.
-  const rdv = calls.filter((c) => c.qualification === 'RDV MEDECIN')
-  const lost = calls.filter((c) => c.qualification === 'PAS INTERESSE')
+  // Priority: keep all confirmed RDV (precious signal), all PAS INTERESSE
+  // up to 60, then fill the rest.
+  const rdv = calls.filter((c) => c.qualification_effective === 'RDV CONFIRME')
+  const lost = calls.filter((c) => c.qualification_effective === 'PAS INTERESSE')
   const rest = calls.filter(
-    (c) => c.qualification !== 'RDV MEDECIN' && c.qualification !== 'PAS INTERESSE'
+    (c) =>
+      c.qualification_effective !== 'RDV CONFIRME' &&
+      c.qualification_effective !== 'PAS INTERESSE'
   )
   const budget = MAX_CALLS_TO_LLM - rdv.length - Math.min(lost.length, 60)
   return [...rdv, ...lost.slice(0, 60), ...rest.slice(0, Math.max(budget, 0))]
@@ -25,17 +30,26 @@ function selectCalls(calls: InsightsCallInput[]): InsightsCallInput[] {
 function aggregateStats(calls: InsightsCallInput[]) {
   const total = calls.length
   let rdv = 0,
+    a_passer_a_humain = 0,
+    rappel = 0,
     pas_interesse = 0,
     pas_de_reponse = 0,
+    repondeur = 0,
     faux_numero = 0,
-    follow_up = 0,
-    nouveau_dossier = 0,
+    non_eligible = 0,
+    ne_pas_rappeler = 0,
     answered = 0,
     duration = 0
   for (const c of calls) {
-    switch (c.qualification) {
-      case 'RDV MEDECIN':
+    switch (c.qualification_effective) {
+      case 'RDV CONFIRME':
         rdv++
+        break
+      case "À PASSER À L'HUMAIN":
+        a_passer_a_humain++
+        break
+      case 'RAPPEL':
+        rappel++
         break
       case 'PAS INTERESSE':
         pas_interesse++
@@ -43,14 +57,17 @@ function aggregateStats(calls: InsightsCallInput[]) {
       case 'PAS DE REPONSE':
         pas_de_reponse++
         break
+      case 'REPONDEUR':
+        repondeur++
+        break
       case 'FAUX NUMERO':
         faux_numero++
         break
-      case 'FOLLOW UP':
-        follow_up++
+      case 'NON ELIGIBLE':
+        non_eligible++
         break
-      case 'NOUVEAU DOSSIER':
-        nouveau_dossier++
+      case 'NE PAS RAPPELER':
+        ne_pas_rappeler++
         break
     }
     if (c.answered) answered++
@@ -59,11 +76,14 @@ function aggregateStats(calls: InsightsCallInput[]) {
   return {
     total,
     rdv,
+    a_passer_a_humain,
+    rappel,
     pas_interesse,
     pas_de_reponse,
+    repondeur,
     faux_numero,
-    follow_up,
-    nouveau_dossier,
+    non_eligible,
+    ne_pas_rappeler,
     answered,
     avg_duration_seconds: total > 0 ? duration / total : 0,
   }
@@ -182,7 +202,11 @@ export async function generateInsights({
 
   const compact = selected.map((c) => ({
     id: c.call_id,
-    qualification: c.qualification ?? 'UNKNOWN',
+    // Dashboard view — the LLM MUST use this for all qualification counting.
+    qualification: c.qualification_effective,
+    // Raw CRM tag (often pre-set by closers before real confirmation).
+    // Kept for transparency only; do NOT count from this field.
+    qualification_crm: c.qualification ?? 'UNKNOWN',
     duration_s: c.duration_seconds,
     hour: c.hour_of_day,
     dow: c.day_of_week,

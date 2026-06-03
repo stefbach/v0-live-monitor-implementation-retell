@@ -98,7 +98,16 @@ export interface InsightsResult {
 export interface InsightsCallInput {
   call_id: string
   summary: string | null
+  // Raw CRM qualification (leads_rdv.qualification). Kept for transparency
+  // but the LLM should rely on qualification_effective for all counting.
   qualification: string | null
+  // Dashboard-computed effective qualification — uses the same strict rule
+  // as the qualification cards (consultation_booked + duration > 5min, or
+  // email_sent + whatsapp_sent + real conversation). One of:
+  // 'RDV CONFIRME' | "À PASSER À L'HUMAIN" | 'RAPPEL' | 'PAS INTERESSE' |
+  // 'PAS DE REPONSE' | 'REPONDEUR' | 'FAUX NUMERO' | 'NON ELIGIBLE' |
+  // 'NE PAS RAPPELER'
+  qualification_effective: string
   sentiment: string | null
   duration_seconds: number
   hour_of_day: number

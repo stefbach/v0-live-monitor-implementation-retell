@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { CallLogEnriched } from '@/lib/types'
 import type { InsightsCallInput, InsightsRequest, InsightsResult } from '@/lib/insights/types'
 import { useInsightsStore, makeInsightsKey } from '@/lib/stores/insights-store'
+import { computeConfirmedRdvLeads, effectiveQualKey } from '@/lib/rdv'
+import { QUAL_META } from '@/lib/qualifications'
 
 const fetcher = async (url: string, body: InsightsRequest) => {
   const res = await fetch(url, {
@@ -30,10 +32,16 @@ const fetcher = async (url: string, body: InsightsRequest) => {
 }
 
 function toLLMInput(calls: CallLogEnriched[]): InsightsCallInput[] {
+  // Compute effective qualification on the SAME data the LLM sees, using the
+  // exact same rule as the dashboard cards (strict RDV + voicemail + handoff
+  // + call_outcome + CRM fallback). That keeps Claude's analysis aligned
+  // with what the user sees in the qualification cards.
+  const confirmedRdvLeadKeys = computeConfirmedRdvLeads(calls)
   return calls.map((c) => ({
     call_id: c.callId,
     summary: c.summary ?? null,
     qualification: c.lead?.qualification ?? null,
+    qualification_effective: QUAL_META[effectiveQualKey(c, confirmedRdvLeadKeys)].label,
     sentiment: c.sentiment ?? null,
     duration_seconds: c.duration,
     hour_of_day: c.hourOfDay,

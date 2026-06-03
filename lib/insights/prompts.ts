@@ -39,7 +39,12 @@ const INSIGHTS_VOCAB = `
 Vocabulaire métier :
 - "RDV" pour rendez-vous médecin
 - "Prospect" pour appel sortant, "patient" pour quelqu'un déjà engagé
-- Qualifications : NOUVEAU DOSSIER, RDV MEDECIN, PAS INTERESSE, PAS DE REPONSE, FAUX NUMERO, FOLLOW UP, TRANSFERRED_TO_ISABELLE`
+- Qualifications EFFECTIVES (celles affichées sur les cards du dashboard, à utiliser pour TOUS les comptages) :
+  RDV CONFIRME, À PASSER À L'HUMAIN, RAPPEL, PAS INTERESSE, PAS DE REPONSE, REPONDEUR, FAUX NUMERO, NON ELIGIBLE, NE PAS RAPPELER
+
+IMPORTANT — Distinction entre les 2 qualifications dans le payload de chaque appel :
+- "qualification" = la qualif EFFECTIVE calculée par le dashboard (règle stricte : RDV CONFIRME ne compte que si consultation booked + appel > 5min, ou email + whatsapp + vraie conversation). C'est la SEULE que tu dois utiliser pour TOUS tes compteurs et insights.
+- "qualification_crm" = la valeur brute en base Supabase, souvent posée prématurément par les closers ou par le flow n8n AVANT confirmation réelle. NE PAS s'en servir pour compter. Tu peux la mentionner UNIQUEMENT si tu veux signaler un écart structurel entre les deux (ex. "X appels marqués RDV MEDECIN en CRM mais non confirmés effectivement"), et dans ce cas formule-le comme un constat de qualité de qualification, jamais comme une alerte sur le call-center lui-même.`
 
 export function buildSystemPrompt(): string {
   const parts = [BASE_SYSTEM_PROMPT, INSIGHTS_VOCAB]
@@ -294,11 +299,14 @@ export function buildUserMessage(args: {
   stats: {
     total: number
     rdv: number
+    a_passer_a_humain: number
+    rappel: number
     pas_interesse: number
     pas_de_reponse: number
+    repondeur: number
     faux_numero: number
-    follow_up: number
-    nouveau_dossier: number
+    non_eligible: number
+    ne_pas_rappeler: number
     answered: number
     avg_duration_seconds: number
   }
@@ -307,14 +315,17 @@ export function buildUserMessage(args: {
   return `Période analysée : **${args.periodLabel}**
 Appels considérés : ${args.callsAnalysed} (dont ${args.callsWithSummary} avec un résumé exploitable)
 
-Statistiques agrégées :
+Statistiques agrégées (qualifications EFFECTIVES — vue dashboard) :
 - Total : ${args.stats.total}
-- RDV MEDECIN : ${args.stats.rdv}
+- RDV CONFIRME : ${args.stats.rdv}
+- À PASSER À L'HUMAIN : ${args.stats.a_passer_a_humain}
+- RAPPEL : ${args.stats.rappel}
 - PAS INTERESSE : ${args.stats.pas_interesse}
 - PAS DE REPONSE : ${args.stats.pas_de_reponse}
+- REPONDEUR : ${args.stats.repondeur}
 - FAUX NUMERO : ${args.stats.faux_numero}
-- FOLLOW UP : ${args.stats.follow_up}
-- NOUVEAU DOSSIER : ${args.stats.nouveau_dossier}
+- NON ELIGIBLE : ${args.stats.non_eligible}
+- NE PAS RAPPELER : ${args.stats.ne_pas_rappeler}
 - Réponses réelles (durée > 15s, disconnect valide) : ${args.stats.answered}
 - Durée moyenne : ${args.stats.avg_duration_seconds.toFixed(0)}s
 

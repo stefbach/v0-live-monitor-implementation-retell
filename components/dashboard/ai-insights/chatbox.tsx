@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import type { CallLogEnriched } from '@/lib/types'
 import type { InsightsCallInput, InsightsResult } from '@/lib/insights/types'
+import { computeConfirmedRdvLeads, effectiveQualKey } from '@/lib/rdv'
+import { QUAL_META } from '@/lib/qualifications'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -20,10 +22,14 @@ interface Props {
 }
 
 function toLLMInput(calls: CallLogEnriched[]): InsightsCallInput[] {
+  // Mirror lib/hooks/use-insights.ts so the chatbox and the insights panel
+  // see the same effective qualification (the one shown on the cards).
+  const confirmedRdvLeadKeys = computeConfirmedRdvLeads(calls)
   return calls.map((c) => ({
     call_id: c.callId,
     summary: c.summary ?? null,
     qualification: c.lead?.qualification ?? null,
+    qualification_effective: QUAL_META[effectiveQualKey(c, confirmedRdvLeadKeys)].label,
     sentiment: c.sentiment ?? null,
     duration_seconds: c.duration,
     hour_of_day: c.hourOfDay,
