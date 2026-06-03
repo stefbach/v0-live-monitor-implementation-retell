@@ -237,9 +237,24 @@ export async function GET(
 
     const leadByPhone = indexLeadsByPhone(leads)
 
+    // Defensive: drop any duplicate Retell calls that share the same call_id.
+    // Shouldn't happen via pagination but guards against edge re-deliveries.
+    const seenCallIds = new Set<string>()
+    const callsUnique = callsRaw.filter((c) => {
+      const id = (c as { call_id?: string }).call_id
+      if (!id || seenCallIds.has(id)) return false
+      seenCallIds.add(id)
+      return true
+    })
+    if (callsUnique.length < callsRaw.length) {
+      console.warn(
+        `[calls] dedup removed ${callsRaw.length - callsUnique.length} duplicate call(s)`
+      )
+    }
+
     // Build prelim calls (no attemptNumber yet)
     type Prelim = CallLogEnriched & { _key: string; _ts: number }
-    const prelim: Prelim[] = callsRaw.map((call) => {
+    const prelim: Prelim[] = callsUnique.map((call) => {
       const startTs = call.start_timestamp as number | string | undefined
       const endTs = call.end_timestamp as number | string | undefined
       const startMs = startTs != null ? new Date(startTs).getTime() : NaN

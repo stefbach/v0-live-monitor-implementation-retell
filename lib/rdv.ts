@@ -184,9 +184,17 @@ export function effectiveQualKey(
   // 3 — Voicemail (strongest non-RDV signal)
   if (c.inVoicemail || c.voicemailSuspected) return 'repondeur'
 
-  // 4 — Human handoff intent (transfer fired but strict RDV not met)
+  // 4 — Human handoff intent: only when the call was actually answered.
+  // The transfer_to_isabelle / human_transfer_triggered flags get set even
+  // on 0-second / unanswered attempts, which falsely inflated the
+  // "À PASSER À L'HUMAIN" card with phantom transfers. A real handoff needs
+  // a real conversation first.
   if (c.analysis?.humanTransferTriggered || c.analysis?.transferToIsabelle) {
-    return 'a_passer_a_humain'
+    if (c.answered) return 'a_passer_a_humain'
+    // Unanswered call with a transfer flag → route by the actual disconnect
+    // signal instead of the spurious handoff.
+    if (c.inVoicemail || c.voicemailSuspected) return 'repondeur'
+    return 'pas_de_reponse'
   }
 
   // 5 — Retell call_outcome direct map
