@@ -64,6 +64,7 @@ export interface NhsPatient {
   last_activity: string | null
   nhs_status: string | null
   escalade: boolean
+  no_response: boolean
   bank_exception: boolean
 }
 
@@ -146,6 +147,12 @@ export function buildPatient(d: DossierRow, l: LeadRow, threeDaysAgo: Date): Nhs
     last_activity: lastActivity,
     nhs_status: d.nhs_submission_status,
     escalade: status === 'sans-reponse',
+    // Contacted (email / WhatsApp / call) but no reply yet and no documents in.
+    // Broader than the 3-day escalation flag — used by the "No response" filter.
+    no_response:
+      (!!l.email_sent || !!l.whatsapp_sent || l.last_call_datetime != null) &&
+      !l.last_response_date &&
+      received === 0,
     bank_exception: !!d.bank_statement_exception,
   }
 }

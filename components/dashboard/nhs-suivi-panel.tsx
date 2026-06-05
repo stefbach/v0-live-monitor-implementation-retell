@@ -39,6 +39,10 @@ interface NhsStats {
 
 type PatientStatus = 'complets' | 'partiels' | 'sans-reponse' | 'aucun-doc' | 'envoye-nhs'
 
+// List filters: the patient statuses, plus a synthetic "no-response" bucket that
+// spans everyone contacted who has not replied yet (broader than 3-day escalation).
+type ListFilter = PatientStatus | 'all' | 'no-response'
+
 interface NhsPatient {
   id: string
   lead_id: string
@@ -53,6 +57,7 @@ interface NhsPatient {
   last_activity: string | null
   nhs_status: string | null
   escalade: boolean
+  no_response: boolean
   bank_exception: boolean
 }
 
@@ -69,8 +74,8 @@ interface NhsPatientDetail {
 
 type View =
   | { name: 'dashboard' }
-  | { name: 'list'; filter: PatientStatus | 'all' }
-  | { name: 'detail'; id: string; from: PatientStatus | 'all' }
+  | { name: 'list'; filter: ListFilter }
+  | { name: 'detail'; id: string; from: ListFilter }
 
 // ── Shared bits ────────────────────────────────────────────────────────────
 
@@ -244,7 +249,7 @@ function DashboardView({
 }: {
   t: (k: string) => string
   lang: 'fr' | 'en'
-  onOpenList: (filter: PatientStatus | 'all') => void
+  onOpenList: (filter: ListFilter) => void
 }) {
   const [stats, setStats] = useState<NhsStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -610,9 +615,9 @@ function ListView({
 }: {
   t: (k: string) => string
   lang: 'fr' | 'en'
-  filter: PatientStatus | 'all'
+  filter: ListFilter
   onBack: () => void
-  onChangeFilter: (f: PatientStatus | 'all') => void
+  onChangeFilter: (f: ListFilter) => void
   onOpenPatient: (id: string) => void
 }) {
   const [patients, setPatients] = useState<NhsPatient[] | null>(null)
@@ -655,7 +660,11 @@ function ListView({
   const locale = lang === 'fr' ? 'fr-FR' : 'en-GB'
 
   const filtered = (patients ?? []).filter(p => {
-    if (filter !== 'all' && p.status !== filter) return false
+    if (filter === 'no-response') {
+      if (!p.no_response) return false
+    } else if (filter !== 'all' && p.status !== filter) {
+      return false
+    }
     if (search) {
       const s = search.toLowerCase()
       const hay = `${p.name ?? ''} ${p.email ?? ''} ${p.phone ?? ''}`.toLowerCase()
@@ -664,10 +673,9 @@ function ListView({
     return true
   })
 
-  const filterButtons: Array<{ id: PatientStatus | 'all'; key: string }> = [
+  const filterButtons: Array<{ id: ListFilter; key: string }> = [
     { id: 'all',          key: 'nhs.list.filter.all' },
-    { id: 'aucun-doc',    key: 'nhs.list.filter.noDocument' },
-    { id: 'sans-reponse', key: 'nhs.list.filter.escalation' },
+    { id: 'no-response',  key: 'nhs.list.filter.escalation' },
     { id: 'partiels',     key: 'nhs.list.filter.partial' },
     { id: 'complets',     key: 'nhs.list.filter.complete' },
     { id: 'envoye-nhs',   key: 'nhs.list.filter.sent' },
@@ -849,7 +857,7 @@ function DetailView({
   t: (k: string) => string
   lang: 'fr' | 'en'
   id: string
-  fromFilter: PatientStatus | 'all'
+  fromFilter: ListFilter
   onBackDashboard: () => void
   onBackList: () => void
 }) {
