@@ -666,6 +666,7 @@ function ListView({
 
   const filterButtons: Array<{ id: PatientStatus | 'all'; key: string }> = [
     { id: 'all',          key: 'nhs.list.filter.all' },
+    { id: 'aucun-doc',    key: 'nhs.list.filter.noDocument' },
     { id: 'sans-reponse', key: 'nhs.list.filter.escalation' },
     { id: 'partiels',     key: 'nhs.list.filter.partial' },
     { id: 'complets',     key: 'nhs.list.filter.complete' },
