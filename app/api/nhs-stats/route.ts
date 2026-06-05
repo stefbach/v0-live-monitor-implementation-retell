@@ -30,7 +30,7 @@ export async function GET() {
       sb
         .from('nhs_dossiers')
         .select(
-          'lead_id, dossier_status, submission_ready, nhs_submission_status, bank_statement_exception, last_analysed_at'
+          'lead_id, dossier_status, submission_ready, nhs_submission_status, bank_statement_exception, last_analysed_at, doc_s2_provider_declaration, doc_medical_report, doc_undue_delay_letter, doc_detailed_medical_estimate'
         ),
 
       sb
@@ -57,6 +57,10 @@ export async function GET() {
       nhs_submission_status: string | null
       bank_statement_exception: boolean | null
       last_analysed_at: string | null
+      doc_s2_provider_declaration: string | null
+      doc_medical_report: string | null
+      doc_undue_delay_letter: string | null
+      doc_detailed_medical_estimate: string | null
     }
 
     const leads = (leadsRes.data ?? []) as LeadRow[]
@@ -119,6 +123,12 @@ export async function GET() {
       accepted:        dossiers.filter(d => d.nhs_submission_status === 'accepted').length,
       refused:         dossiers.filter(d => d.nhs_submission_status === 'refused').length,
       bank_exceptions: dossiers.filter(d => d.bank_statement_exception).length,
+
+      // Clinic-produced documents (received = produced / signed by the clinic).
+      clinic_s2_provider:    dossiers.filter(d => d.doc_s2_provider_declaration === 'received').length,
+      clinic_medical_report: dossiers.filter(d => d.doc_medical_report === 'received').length,
+      clinic_undue_delay:    dossiers.filter(d => d.doc_undue_delay_letter === 'received').length,
+      clinic_estimate:       dossiers.filter(d => d.doc_detailed_medical_estimate === 'received').length,
 
       monthly_target: target,
       days_remaining: daysRemaining,

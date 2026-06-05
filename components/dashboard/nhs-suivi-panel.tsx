@@ -33,6 +33,10 @@ interface NhsStats {
   accepted: number
   refused: number
   bank_exceptions: number
+  clinic_s2_provider: number
+  clinic_medical_report: number
+  clinic_undue_delay: number
+  clinic_estimate: number
   monthly_target: number
   days_remaining: number
 }
@@ -512,6 +516,41 @@ function DashboardView({
                 variant="red"
                 icon={AlertTriangle}
                 onClick={() => onOpenList('sans-reponse')}
+              />
+            </div>
+          </div>
+
+          {/* Clinic documents — produced / signed by the clinic */}
+          <div>
+            <SectionLabel icon="🩺">{t('nhs.section.clinicDocs')}</SectionLabel>
+            <div className="grid grid-cols-4 gap-4">
+              <KpiCard
+                label={t('nhs.clinic.medicalReport.label')}
+                value={stats.clinic_medical_report}
+                sub={t('nhs.clinic.medicalReport.sub')}
+                variant="blue"
+                icon={FileText}
+              />
+              <KpiCard
+                label={t('nhs.clinic.undueDelay.label')}
+                value={stats.clinic_undue_delay}
+                sub={t('nhs.clinic.undueDelay.sub')}
+                variant="blue"
+                icon={FileText}
+              />
+              <KpiCard
+                label={t('nhs.clinic.s2Provider.label')}
+                value={stats.clinic_s2_provider}
+                sub={t('nhs.clinic.s2Provider.sub')}
+                variant="amber"
+                icon={Send}
+              />
+              <KpiCard
+                label={t('nhs.clinic.estimate.label')}
+                value={stats.clinic_estimate}
+                sub={t('nhs.clinic.estimate.sub')}
+                variant="amber"
+                icon={FileText}
               />
             </div>
           </div>
