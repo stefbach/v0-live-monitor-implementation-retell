@@ -8,6 +8,11 @@ import {
 } from 'lucide-react'
 import { useT } from '@/lib/hooks/use-t'
 
+// How often the live NHS dashboard re-fetches while the tab is visible (ms).
+// Keeps the panel in sync with workflow writes (dossier status, documents,
+// communications) in near real time without a manual refresh.
+const LIVE_REFRESH_MS = 15_000
+
 // ── Types ──────────────────────────────────────────────────────────────────
 
 interface NhsStats {
@@ -246,8 +251,8 @@ function DashboardView({
   const [error, setError] = useState<string | null>(null)
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
 
-  const fetchStats = useCallback(async () => {
-    setLoading(true)
+  const fetchStats = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true)
     setError(null)
     try {
       const res = await fetch('/api/nhs-stats', { cache: 'no-store' })
@@ -258,11 +263,29 @@ function DashboardView({
     } catch (e) {
       setError(String(e))
     } finally {
-      setLoading(false)
+      if (!opts?.silent) setLoading(false)
     }
   }, [])
 
-  useEffect(() => { fetchStats() }, [fetchStats])
+  // Live updates: poll while the tab is visible and refetch on focus, so the
+  // panel reflects workflow writes in near real time. Background polls are
+  // silent (no spinner / skeleton flash); the manual button stays explicit.
+  useEffect(() => {
+    fetchStats()
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === 'visible') fetchStats({ silent: true })
+    }, LIVE_REFRESH_MS)
+    const onFocus = () => {
+      if (document.visibilityState === 'visible') fetchStats({ silent: true })
+    }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onFocus)
+    return () => {
+      clearInterval(intervalId)
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onFocus)
+    }
+  }, [fetchStats])
 
   const submitted = stats?.submitted ?? 0
   const target    = stats?.monthly_target ?? 30
@@ -290,11 +313,15 @@ function DashboardView({
           <p className="text-sm text-gray-500 mt-0.5">{t('nhs.subtitle')}</p>
         </div>
         <div className="flex items-center gap-3">
+          <span className="relative flex h-2 w-2" title="Live · auto-refresh">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+          </span>
           <span className="text-xs text-gray-400">
             {lastRefresh.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}
           </span>
           <button
-            onClick={fetchStats}
+            onClick={() => fetchStats()}
             disabled={loading}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors disabled:opacity-50"
           >
@@ -593,20 +620,37 @@ function ListView({
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
 
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
+  const fetchPatients = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true)
     setError(null)
-    fetch('/api/nhs-patients', { cache: 'no-store' })
-      .then(async r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`)
-        return r.json() as Promise<{ patients: NhsPatient[] }>
-      })
-      .then(d => { if (!cancelled) setPatients(d.patients) })
-      .catch(e => { if (!cancelled) setError(String(e)) })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
+    try {
+      const r = await fetch('/api/nhs-patients', { cache: 'no-store' })
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      const d = (await r.json()) as { patients: NhsPatient[] }
+      setPatients(d.patients)
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      if (!opts?.silent) setLoading(false)
+    }
   }, [])
+
+  useEffect(() => {
+    fetchPatients()
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === 'visible') fetchPatients({ silent: true })
+    }, LIVE_REFRESH_MS)
+    const onFocus = () => {
+      if (document.visibilityState === 'visible') fetchPatients({ silent: true })
+    }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onFocus)
+    return () => {
+      clearInterval(intervalId)
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onFocus)
+    }
+  }, [fetchPatients])
 
   const locale = lang === 'fr' ? 'fr-FR' : 'en-GB'
 
@@ -812,20 +856,37 @@ function DetailView({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
+  const fetchDetail = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true)
     setError(null)
-    fetch(`/api/nhs-patients/${encodeURIComponent(id)}`, { cache: 'no-store' })
-      .then(async r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`)
-        return r.json() as Promise<NhsPatientDetail>
-      })
-      .then(d => { if (!cancelled) setDetail(d) })
-      .catch(e => { if (!cancelled) setError(String(e)) })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
+    try {
+      const r = await fetch(`/api/nhs-patients/${encodeURIComponent(id)}`, { cache: 'no-store' })
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      const d = (await r.json()) as NhsPatientDetail
+      setDetail(d)
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      if (!opts?.silent) setLoading(false)
+    }
   }, [id])
+
+  useEffect(() => {
+    fetchDetail()
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') fetchDetail({ silent: true })
+    }, LIVE_REFRESH_MS)
+    const onFocus = () => {
+      if (document.visibilityState === 'visible') fetchDetail({ silent: true })
+    }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onFocus)
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onFocus)
+    }
+  }, [fetchDetail])
 
   const locale = lang === 'fr' ? 'fr-FR' : 'en-GB'
 
