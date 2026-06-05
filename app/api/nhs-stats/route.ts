@@ -18,7 +18,7 @@ export async function GET() {
       sb
         .from('leads_rdv')
         .select(
-          'email_sent, whatsapp_sent, relance_email_sent, relance_whatsapp_sent, last_response_date, relance_email_date'
+          'id, email_sent, whatsapp_sent, relance_email_sent, relance_whatsapp_sent, last_response_date, relance_email_date'
         )
         .not('email', 'is', null)
         .is('raison_ne_pas_rappeler', null),
@@ -41,6 +41,7 @@ export async function GET() {
     ])
 
     type LeadRow = {
+      id: string
       email_sent: boolean | null
       whatsapp_sent: boolean | null
       relance_email_sent: boolean | null
@@ -67,6 +68,26 @@ export async function GET() {
     )
     const target = (objectiveRes.data as { target?: number } | null)?.target ?? 30
 
+    // File-status reconciliation: count over the *emailed* lead population so the
+    // file-status buckets add up to "explanatory email sent". A patient who was
+    // emailed but has no dossier yet (or an empty one) counts as "no document".
+    const dossierByLead = new Map(
+      dossiers.filter(d => d.lead_id != null).map(d => [d.lead_id as string, d]),
+    )
+    let fileNoDocs = 0
+    let filePartial = 0
+    let fileComplete = 0
+    for (const l of leads) {
+      if (!l.email_sent) continue
+      const d = dossierByLead.get(l.id)
+      const s = d?.dossier_status ?? null
+      // Submitted / sent-to-NHS dossiers are tracked in the NHS section, not here.
+      if (s === 'SUBMITTED' || (d?.nhs_submission_status ?? null) != null) continue
+      if (s === 'COMPLETE' || s === 'READY_TO_SUBMIT' || d?.submission_ready) fileComplete++
+      else if (s === 'MISSING_DOCUMENTS') filePartial++
+      else fileNoDocs++
+    }
+
     const now = new Date()
     const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000)
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0)
@@ -86,11 +107,9 @@ export async function GET() {
         new Date(l.relance_email_date) < threeDaysAgo
       ).length,
 
-      no_docs:        dossiers.filter(d => d.dossier_status === 'NO_DOCUMENTS_RECEIVED').length,
-      partial_docs:   dossiers.filter(d => d.dossier_status === 'MISSING_DOCUMENTS').length,
-      complete_docs:  dossiers.filter(d =>
-        d.dossier_status === 'COMPLETE' || d.dossier_status === 'READY_TO_SUBMIT'
-      ).length,
+      no_docs:        fileNoDocs,
+      partial_docs:   filePartial,
+      complete_docs:  fileComplete,
       ready_to_submit: dossiers.filter(d => d.submission_ready).length,
       submitted:       dossiers.filter(d => d.dossier_status === 'SUBMITTED').length,
 

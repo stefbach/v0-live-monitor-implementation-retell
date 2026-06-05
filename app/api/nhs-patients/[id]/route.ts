@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { NHS_DOCS, buildPatient } from '../route'
+import { NHS_DOCS, buildPatient, emptyDossier } from '../route'
 
 function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -33,6 +33,16 @@ export async function GET(
     const sb = getSupabase()
     const docCols = NHS_DOCS.map(d => d.key).join(', ')
 
+    type D = Record<string, unknown> & {
+      id: string
+      lead_id: string | null
+      dossier_status: string | null
+      submission_ready: boolean | null
+      nhs_submission_status: string | null
+      bank_statement_exception: boolean | null
+      last_analysed_at: string | null
+    }
+
     const { data: dossier, error: dErr } = await sb
       .from('nhs_dossiers')
       .select(
@@ -43,19 +53,20 @@ export async function GET(
       .maybeSingle()
 
     if (dErr) throw dErr
-    if (!dossier) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-    type D = Record<string, unknown> & {
-      id: string
-      lead_id: string | null
-      dossier_status: string | null
-      submission_ready: boolean | null
-      nhs_submission_status: string | null
-      bank_statement_exception: boolean | null
-      last_analysed_at: string | null
+    // `id` may be a dossier id, or a lead id for an emailed patient that has no
+    // dossier yet (these show as "no document" in the list). Fall back to the
+    // lead in that case so the detail view still opens.
+    let d: D
+    let leadId: string
+    if (dossier) {
+      d = dossier as D
+      if (!d.lead_id) return NextResponse.json({ error: 'Dossier has no lead_id' }, { status: 400 })
+      leadId = d.lead_id
+    } else {
+      d = emptyDossier(id) as D
+      leadId = id
     }
-    const d = dossier as D
-    if (!d.lead_id) return NextResponse.json({ error: 'Dossier has no lead_id' }, { status: 400 })
 
     const { data: leadRow, error: lErr } = await sb
       .from('leads_rdv')
@@ -65,11 +76,11 @@ export async function GET(
           ' last_response_date, last_call_datetime, last_updated,' +
           ' first_mail:"1st_mail", second_mail:"2nd_mail"',
       )
-      .eq('id', d.lead_id)
+      .eq('id', leadId)
       .maybeSingle()
 
     if (lErr) throw lErr
-    if (!leadRow) return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
+    if (!leadRow) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
     type L = {
       id: string

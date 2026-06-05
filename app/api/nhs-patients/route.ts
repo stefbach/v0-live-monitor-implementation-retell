@@ -150,6 +150,20 @@ export function buildPatient(d: DossierRow, l: LeadRow, threeDaysAgo: Date): Nhs
   }
 }
 
+// Synthetic empty dossier for an emailed lead that has no dossier row yet, so
+// such patients still appear (as "no document") and reconcile with the overview.
+export function emptyDossier(leadId: string): DossierRow {
+  return {
+    id: leadId,
+    lead_id: leadId,
+    dossier_status: null,
+    submission_ready: null,
+    nhs_submission_status: null,
+    bank_statement_exception: null,
+    last_analysed_at: null,
+  }
+}
+
 export async function GET() {
   try {
     const sb = getSupabase()
@@ -168,22 +182,28 @@ export async function GET() {
           'id, nom, email, numero_telephone, patient_dob, email_sent, whatsapp_sent,' +
             ' relance_email_sent, relance_whatsapp_sent, relance_email_date,' +
             ' last_response_date, last_call_datetime, last_updated',
-        ),
+        )
+        .not('email', 'is', null)
+        .is('raison_ne_pas_rappeler', null),
     ])
 
     const dossiers = (dossiersRes.data ?? []) as DossierRow[]
     const leads = (leadsRes.data ?? []) as LeadRow[]
-    const leadById = new Map(leads.map(l => [l.id, l]))
+    const dossierByLead = new Map(
+      dossiers.filter(d => d.lead_id != null).map(d => [d.lead_id as string, d]),
+    )
 
     const now = new Date()
     const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000)
 
+    // Build the list over the emailed-lead population so it reconciles with the
+    // overview file-status counts: an emailed lead with no dossier (or an empty
+    // one) is shown as a "no document" patient rather than being dropped.
     const patients: NhsPatient[] = []
-    for (const d of dossiers) {
-      if (!d.lead_id) continue
-      const lead = leadById.get(d.lead_id)
-      if (!lead) continue
-      patients.push(buildPatient(d, lead, threeDaysAgo))
+    for (const l of leads) {
+      if (!l.email_sent) continue
+      const d = dossierByLead.get(l.id) ?? emptyDossier(l.id)
+      patients.push(buildPatient(d, l, threeDaysAgo))
     }
 
     patients.sort((a, b) => {
