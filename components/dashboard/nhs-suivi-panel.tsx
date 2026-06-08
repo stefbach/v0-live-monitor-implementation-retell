@@ -68,7 +68,7 @@ interface NhsPatient {
 
 interface NhsPatientDetail {
   patient: NhsPatient
-  documents: Array<{ key: string; required: boolean; received: boolean }>
+  documents: Array<{ key: string; required: boolean; origin: 'patient' | 'signature' | 'clinic'; received: boolean }>
   timeline: Array<{
     party: 'patient' | 'clinic' | 'nhs' | 'team'
     kind: 'call' | 'email' | 'whatsapp' | 'doc' | 'response' | 'submission' | 'assignment'
@@ -116,6 +116,17 @@ const commKindDot: Record<string, string> = {
   response:   'bg-emerald-500',
   submission: 'bg-indigo-500',
   assignment: 'bg-amber-500',
+}
+
+// Document checklist status styling. Signature docs (clinic-produced, sent out
+// for signature) use "Awaiting signature → Signed" rather than the patient
+// document "Pending → Received" wording.
+const docStatusStyle: Record<string, { tag: string; icon: string; glyph: string }> = {
+  received:          { tag: 'bg-emerald-50 text-emerald-700', icon: 'bg-emerald-100 text-emerald-700', glyph: '✓' },
+  signed:            { tag: 'bg-emerald-50 text-emerald-700', icon: 'bg-emerald-100 text-emerald-700', glyph: '✓' },
+  pending:           { tag: 'bg-gray-100 text-gray-600',      icon: 'bg-gray-200 text-gray-500',        glyph: '·' },
+  awaitingSignature: { tag: 'bg-blue-50 text-blue-700',       icon: 'bg-blue-100 text-blue-700',        glyph: '✎' },
+  optional:          { tag: 'bg-amber-50 text-amber-700',     icon: 'bg-amber-100 text-amber-700',      glyph: '○' },
 }
 
 function KpiCard({
@@ -1180,28 +1191,24 @@ function DetailView({
           </div>
           <div className="grid grid-cols-2 gap-2">
             {documents.map(doc => {
-              // Reflect the real received state first, so an optional doc that
-              // actually arrived (e.g. bank statements) shows "Received" — not a
-              // blanket "Optional". Optionality only governs the not-received case.
-              const tag = doc.received ? 'received' : doc.required ? 'pending' : 'optional'
-              const tagCls = tag === 'received'
-                ? 'bg-emerald-50 text-emerald-700'
-                : tag === 'optional'
-                  ? 'bg-amber-50 text-amber-700'
-                  : 'bg-gray-100 text-gray-600'
-              const iconCls = tag === 'received'
-                ? 'bg-emerald-100 text-emerald-700'
-                : tag === 'optional'
-                  ? 'bg-amber-100 text-amber-700'
-                  : 'bg-gray-200 text-gray-500'
+              // Signature docs (e.g. S2 Provider Declaration, Detailed Medical
+              // Estimate) aren't received from the patient — the clinic sends them
+              // out for signature and gets them back, so show that workflow's
+              // status. For patient docs, reflect the real received state first so
+              // an optional doc that arrived (bank statements) shows "Received".
+              const status =
+                doc.origin === 'signature'
+                  ? doc.received ? 'signed' : 'awaitingSignature'
+                  : doc.received ? 'received' : doc.required ? 'pending' : 'optional'
+              const s = docStatusStyle[status]
               return (
                 <div key={doc.key} className="flex items-center gap-2.5 p-2.5 rounded-lg border border-gray-200 bg-gray-50">
-                  <div className={`w-5 h-5 rounded flex items-center justify-center text-xs font-bold shrink-0 ${iconCls}`}>
-                    {tag === 'received' ? '✓' : tag === 'optional' ? '○' : '·'}
+                  <div className={`w-5 h-5 rounded flex items-center justify-center text-xs font-bold shrink-0 ${s.icon}`}>
+                    {s.glyph}
                   </div>
                   <span className="flex-1 text-xs text-gray-700">{t(`nhs.doc.${doc.key}`)}</span>
-                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${tagCls}`}>
-                    {t(`nhs.detail.docs.${tag}`)}
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${s.tag}`}>
+                    {t(`nhs.detail.docs.${status}`)}
                   </span>
                 </div>
               )

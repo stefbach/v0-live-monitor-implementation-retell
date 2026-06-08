@@ -18,7 +18,7 @@ type CommKind = 'call' | 'email' | 'whatsapp' | 'doc' | 'response' | 'submission
 
 export interface NhsPatientDetail {
   patient: ReturnType<typeof buildPatient>
-  documents: Array<{ key: string; required: boolean; received: boolean }>
+  documents: Array<{ key: string; required: boolean; origin: string; received: boolean }>
   timeline: Array<{
     party: CommParty
     kind: CommKind
@@ -169,6 +169,7 @@ export async function GET(
     const documents = NHS_DOCS.map(doc => ({
       key: doc.key,
       required: doc.required,
+      origin: doc.origin,
       received: d[doc.key] === 'received',
     }))
 

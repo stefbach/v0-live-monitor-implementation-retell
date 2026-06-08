@@ -10,18 +10,23 @@ function getSupabase() {
 
 export const dynamic = 'force-dynamic'
 
+// `origin` captures how each document is obtained, which drives the status label
+// shown in the checklist:
+//   patient   — supplied by the patient (Pending → Received)
+//   signature — produced by the clinic and sent out for signature, then returned
+//               (Awaiting signature → Signed); NOT received from the patient
 export const NHS_DOCS = [
-  { key: 'doc_nhs_s2_form',              required: true },
-  { key: 'doc_s2_provider_declaration',  required: true },
-  { key: 'doc_cpam_certificate',         required: true },
-  { key: 'doc_clinical_justification_gp', required: true },
-  { key: 'doc_medical_report',            required: true },
-  { key: 'doc_undue_delay_letter',        required: true },
-  { key: 'doc_patient_authorisation',     required: true },
-  { key: 'doc_identity_document',         required: true },
-  { key: 'doc_proof_of_residence',        required: true },
-  { key: 'doc_bank_statements',           required: false },
-  { key: 'doc_detailed_medical_estimate', required: true },
+  { key: 'doc_nhs_s2_form',               required: true,  origin: 'patient'   },
+  { key: 'doc_s2_provider_declaration',   required: true,  origin: 'signature' },
+  { key: 'doc_cpam_certificate',          required: true,  origin: 'patient'   },
+  { key: 'doc_clinical_justification_gp', required: true,  origin: 'patient'   },
+  { key: 'doc_medical_report',            required: true,  origin: 'patient'   },
+  { key: 'doc_undue_delay_letter',        required: true,  origin: 'patient'   },
+  { key: 'doc_patient_authorisation',     required: true,  origin: 'patient'   },
+  { key: 'doc_identity_document',         required: true,  origin: 'patient'   },
+  { key: 'doc_proof_of_residence',        required: true,  origin: 'patient'   },
+  { key: 'doc_bank_statements',           required: false, origin: 'patient'   },
+  { key: 'doc_detailed_medical_estimate', required: true,  origin: 'signature' },
 ] as const
 
 type DossierRow = Record<string, unknown> & {
