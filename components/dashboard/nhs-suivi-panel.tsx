@@ -70,8 +70,9 @@ interface NhsPatientDetail {
   patient: NhsPatient
   documents: Array<{ key: string; required: boolean; received: boolean }>
   timeline: Array<{
-    kind: 'call' | 'email' | 'whatsapp' | 'doc' | 'response'
-    date: string
+    party: 'patient' | 'clinic' | 'nhs' | 'team'
+    kind: 'call' | 'email' | 'whatsapp' | 'doc' | 'response' | 'submission' | 'assignment'
+    date: string | null
     title_key: string
     detail: string | null
   }>
@@ -97,6 +98,24 @@ const nhsStatusBadgeClass: Record<string, string> = {
   additional_info: 'bg-amber-50 text-amber-700 border-amber-200',
   accepted:        'bg-emerald-50 text-emerald-700 border-emerald-200',
   refused:         'bg-red-50 text-red-700 border-red-200',
+}
+
+// Communications history: each entry is colour-coded by counterparty (who the
+// communication was with) and by channel (the dot).
+const commPartyChip: Record<'patient' | 'clinic' | 'nhs' | 'team', string> = {
+  patient: 'bg-sky-50 text-sky-700 border-sky-200',
+  clinic:  'bg-violet-50 text-violet-700 border-violet-200',
+  nhs:     'bg-indigo-50 text-indigo-700 border-indigo-200',
+  team:    'bg-amber-50 text-amber-700 border-amber-200',
+}
+const commKindDot: Record<string, string> = {
+  call:       'bg-blue-500',
+  email:      'bg-amber-500',
+  whatsapp:   'bg-emerald-500',
+  doc:        'bg-gray-500',
+  response:   'bg-emerald-500',
+  submission: 'bg-indigo-500',
+  assignment: 'bg-amber-500',
 }
 
 function KpiCard({
@@ -1198,30 +1217,28 @@ function DetailView({
           {timeline.length === 0 ? (
             <p className="text-xs text-gray-400">{t('nhs.detail.comms.empty')}</p>
           ) : (
-            <div className="space-y-2">
-              {timeline.map((item, i) => {
-                const dotColor = {
-                  call: 'bg-blue-500',
-                  email: 'bg-amber-500',
-                  whatsapp: 'bg-emerald-500',
-                  doc: 'bg-gray-500',
-                  response: 'bg-emerald-500',
-                }[item.kind]
-                return (
-                  <div key={i} className="flex gap-3 py-2 border-b border-gray-100 last:border-b-0 text-xs">
-                    <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${dotColor}`} />
-                    <div className="text-gray-400 whitespace-nowrap min-w-[90px]">
-                      {new Date(item.date).toLocaleString(locale, {
-                        day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
-                      })}
-                    </div>
-                    <div className="flex-1">
-                      <div className="font-medium text-gray-700">{t(item.title_key)}</div>
-                      {item.detail && <div className="text-gray-400 mt-0.5">{item.detail}</div>}
-                    </div>
+            <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+              {timeline.map((item, i) => (
+                <div key={i} className="flex gap-3 py-2 border-b border-gray-100 last:border-b-0 text-xs">
+                  <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${commKindDot[item.kind] ?? 'bg-gray-400'}`} />
+                  <div className="text-gray-400 whitespace-nowrap min-w-[78px]">
+                    {item.date
+                      ? new Date(item.date).toLocaleString(locale, {
+                          day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+                        })
+                      : '—'}
                   </div>
-                )
-              })}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-medium text-gray-700">{t(item.title_key)}</span>
+                      <span className={`inline-flex px-1.5 py-0.5 rounded-full border text-[10px] font-medium ${commPartyChip[item.party]}`}>
+                        {t(`nhs.detail.comms.party.${item.party}`)}
+                      </span>
+                    </div>
+                    {item.detail && <div className="text-gray-400 mt-0.5 break-words">{item.detail}</div>}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
