@@ -30,7 +30,7 @@ export async function GET() {
       sb
         .from('nhs_dossiers')
         .select(
-          'lead_id, dossier_status, submission_ready, nhs_submission_status, bank_statement_exception, last_analysed_at, doc_s2_provider_declaration, doc_medical_report, doc_undue_delay_letter, doc_detailed_medical_estimate'
+          'lead_id, dossier_status, submission_ready, nhs_submission_status, bank_statement_exception, last_analysed_at, created_at, updated_at, submission_date, nhs_submission_date, doc_s2_provider_declaration, doc_medical_report, doc_undue_delay_letter, doc_detailed_medical_estimate'
         ),
 
       sb
@@ -57,6 +57,10 @@ export async function GET() {
       nhs_submission_status: string | null
       bank_statement_exception: boolean | null
       last_analysed_at: string | null
+      created_at: string | null
+      updated_at: string | null
+      submission_date: string | null
+      nhs_submission_date: string | null
       doc_s2_provider_declaration: string | null
       doc_medical_report: string | null
       doc_undue_delay_letter: string | null
@@ -97,6 +101,66 @@ export async function GET() {
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0)
     const daysRemaining = lastDay.getDate() - now.getDate()
 
+    // ── Time dimension (aging / SLA / cycle time / pace) ─────────────────────
+    // All derived from existing timestamps — no historical snapshot needed.
+    const STALLED_DAYS = 5
+    const IN_REVIEW_SLA_DAYS = 21
+
+    const ageDays = (ts: string | null | undefined): number | null => {
+      if (!ts) return null
+      const t = Date.parse(ts)
+      if (Number.isNaN(t)) return null
+      return (now.getTime() - t) / 86_400_000
+    }
+    // When a dossier last changed — the basis for "no change in N days".
+    const lastActivity = (d: DossierRow) => d.updated_at ?? d.last_analysed_at ?? d.created_at ?? null
+    const avg = (xs: number[]) => (xs.length ? Math.round(xs.reduce((s, a) => s + a, 0) / xs.length) : null)
+    const maxAge = (xs: number[]) => (xs.length ? Math.round(Math.max(...xs)) : 0)
+
+    const isSubmitted = (d: DossierRow) => d.dossier_status === 'SUBMITTED' || d.nhs_submission_status != null
+
+    // Partial dossiers that have gone quiet — "quietly stuck".
+    const partialAges = dossiers
+      .filter(d => d.dossier_status === 'MISSING_DOCUMENTS')
+      .map(d => ageDays(lastActivity(d)))
+      .filter((a): a is number => a != null)
+    const stalledAges = partialAges.filter(a => a >= STALLED_DAYS)
+
+    // Complete dossiers not yet submitted — how long the oldest has been ready.
+    const completeAges = dossiers
+      .filter(
+        d =>
+          !isSubmitted(d) &&
+          (d.dossier_status === 'COMPLETE' || d.dossier_status === 'READY_TO_SUBMIT' || d.submission_ready),
+      )
+      .map(d => ageDays(lastActivity(d)))
+      .filter((a): a is number => a != null)
+
+    // Cycle time: dossier creation → submission.
+    const submitCycles = dossiers
+      .filter(isSubmitted)
+      .map(d => {
+        const sub = d.nhs_submission_date ?? d.submission_date
+        if (!sub || !d.created_at) return null
+        const days = (Date.parse(sub) - Date.parse(d.created_at)) / 86_400_000
+        return Number.isFinite(days) && days >= 0 ? days : null
+      })
+      .filter((a): a is number => a != null)
+
+    // Time spent in NHS review.
+    const reviewAges = dossiers
+      .filter(d => d.nhs_submission_status === 'in_review')
+      .map(d => ageDays(d.nhs_submission_date))
+      .filter((a): a is number => a != null)
+
+    // Pace to the monthly target.
+    const submittedCount = dossiers.filter(d => d.dossier_status === 'SUBMITTED').length
+    const daysInMonth = lastDay.getDate()
+    const onPaceTarget = Math.round((target * now.getDate()) / daysInMonth)
+    const remainingToTarget = Math.max(target - submittedCount, 0)
+    const pacePerDay =
+      daysRemaining > 0 ? Math.round((remainingToTarget / daysRemaining) * 10) / 10 : remainingToTarget
+
     const stats = {
       initial_email_sent:    leads.filter(l => l.email_sent).length,
       initial_whatsapp_sent: leads.filter(l => l.whatsapp_sent).length,
@@ -132,6 +196,18 @@ export async function GET() {
 
       monthly_target: target,
       days_remaining: daysRemaining,
+
+      // Time dimension
+      on_pace_target: onPaceTarget,
+      pace_per_day: pacePerDay,
+      stalled_count: stalledAges.length,
+      stalled_oldest_days: maxAge(stalledAges),
+      partial_oldest_days: maxAge(partialAges),
+      complete_oldest_days: maxAge(completeAges),
+      avg_days_to_submit: avg(submitCycles),
+      in_review_avg_days: avg(reviewAges),
+      in_review_over_sla: reviewAges.filter(a => a > IN_REVIEW_SLA_DAYS).length,
+      in_review_sla_days: IN_REVIEW_SLA_DAYS,
     }
 
     return NextResponse.json(stats)

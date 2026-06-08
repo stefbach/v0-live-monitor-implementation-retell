@@ -40,6 +40,17 @@ interface NhsStats {
   clinic_estimate: number
   monthly_target: number
   days_remaining: number
+  // Time dimension (aging / SLA / cycle time / pace)
+  on_pace_target: number
+  pace_per_day: number
+  stalled_count: number
+  stalled_oldest_days: number
+  partial_oldest_days: number
+  complete_oldest_days: number
+  avg_days_to_submit: number | null
+  in_review_avg_days: number | null
+  in_review_over_sla: number
+  in_review_sla_days: number
 }
 
 type PatientStatus = 'complets' | 'partiels' | 'sans-reponse' | 'aucun-doc' | 'envoye-nhs'
@@ -148,11 +159,12 @@ const commPartyText: Record<'patient' | 'clinic' | 'nhs' | 'team', string> = {
 const COMM_PARTIES = ['patient', 'clinic', 'nhs', 'team'] as const
 
 function KpiCard({
-  label, value, sub, variant = 'default', icon: Icon, onClick,
+  label, value, sub, subTone = 'default', variant = 'default', icon: Icon, onClick,
 }: {
   label: string
   value: number
   sub?: string
+  subTone?: 'default' | 'warn'
   variant?: 'default' | 'blue' | 'amber' | 'green' | 'red' | 'neutral'
   icon?: React.ElementType
   onClick?: () => void
@@ -188,7 +200,11 @@ function KpiCard({
       <p className={`text-3xl font-semibold tabular-nums ${valueColors[variant]}`}>
         {value}
       </p>
-      {sub && <p className="text-xs text-gray-400 mt-1.5 leading-tight">{sub}</p>}
+      {sub && (
+        <p className={`text-xs mt-1.5 leading-tight ${subTone === 'warn' ? 'text-amber-600 font-medium' : 'text-gray-400'}`}>
+          {sub}
+        </p>
+      )}
     </button>
   )
 }
@@ -410,6 +426,12 @@ function DashboardView({
   const responses    = stats?.responses_received  ?? 0
   const completeDocs = stats?.complete_docs       ?? 0
 
+  // Pace to the monthly target: where you should be by today vs where you are.
+  const onPaceTarget = stats?.on_pace_target ?? 0
+  const pacePerDay   = stats?.pace_per_day ?? 0
+  const behindPace   = submitted < onPaceTarget
+  const onPacePct    = target > 0 ? Math.round((onPaceTarget / target) * 100) : 0
+
   const p = (v: number, base: number) =>
     base > 0 ? Math.round((v / base) * 100) : 0
   const plural = (key: string, n: number) =>
@@ -471,9 +493,18 @@ function DashboardView({
                   <span className="text-4xl font-bold tabular-nums">{submitted}</span>
                   <span className="text-xl opacity-60">/ {target}</span>
                 </div>
-                <p className="text-sm opacity-70 mt-1">
+                <p className="text-sm opacity-80 mt-1">
                   {t('nhs.objective.submittedThisMonth')} · {remaining}{' '}
                   {plural('nhs.objective.remainingToReach', remaining)}
+                  <span className="mx-1.5 opacity-50">•</span>
+                  <span className="font-semibold">
+                    {t('nhs.objective.needPerDay').replace('{n}', String(pacePerDay))}
+                  </span>
+                  <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full bg-white/15 text-[11px] font-medium align-middle">
+                    {behindPace
+                      ? `▼ ${t('nhs.objective.behindPace')}`
+                      : `▲ ${t('nhs.objective.onPaceLabel')}`}
+                  </span>
                 </p>
               </div>
               <div className="w-52 shrink-0">
@@ -487,7 +518,19 @@ function DashboardView({
                     style={{ width: `${Math.min(progress, 100)}%` }}
                   />
                 </div>
-                <p className="text-xs opacity-60 mt-2">
+                {/* On-pace marker: where the count should be by today */}
+                <div className="relative h-3.5">
+                  <div
+                    className="absolute top-0 flex flex-col items-center"
+                    style={{ left: `${Math.min(onPacePct, 100)}%`, transform: 'translateX(-50%)' }}
+                  >
+                    <div className="w-0.5 h-2 bg-amber-300" />
+                    <span className="text-[10px] text-amber-200 whitespace-nowrap">
+                      {t('nhs.objective.onPace').replace('{n}', String(onPaceTarget))}
+                    </span>
+                  </div>
+                </div>
+                <p className="text-xs opacity-60">
                   {stats.days_remaining} {plural('nhs.objective.daysRemaining', stats.days_remaining)}
                 </p>
               </div>
@@ -535,6 +578,31 @@ function DashboardView({
               </div>
               <span className="text-3xl font-bold text-emerald-600 tabular-nums shrink-0">
                 {stats.ready_to_submit}
+              </span>
+            </button>
+
+            {/* Aging / SLA — partial dossiers that have gone quiet */}
+            <button
+              type="button"
+              onClick={() => onOpenList('partiels')}
+              className="w-full flex items-center gap-4 rounded-xl p-4 bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors text-left"
+            >
+              <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center shrink-0">
+                <Clock className="w-4 h-4 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-amber-700 flex items-center gap-1.5">
+                  {t('nhs.alert.stalled.title')}
+                  <span className="text-[10px] font-bold bg-amber-200 text-amber-800 px-1 py-px rounded">SLA</span>
+                </p>
+                <p className="text-xs text-amber-600">
+                  {stats.stalled_count > 0
+                    ? t('nhs.alert.stalled.desc').replace('{n}', String(stats.stalled_oldest_days))
+                    : t('nhs.alert.stalled.descEmpty')}
+                </p>
+              </div>
+              <span className="text-3xl font-bold text-amber-600 tabular-nums shrink-0">
+                {stats.stalled_count}
               </span>
             </button>
           </div>
@@ -600,7 +668,12 @@ function DashboardView({
               <KpiCard
                 label={t('nhs.dossier.partial.label')}
                 value={stats.partial_docs}
-                sub={t('nhs.dossier.partial.sub')}
+                sub={
+                  stats.partial_oldest_days > 0
+                    ? t('nhs.dossier.partial.aging').replace('{n}', String(stats.partial_oldest_days))
+                    : t('nhs.dossier.partial.sub')
+                }
+                subTone={stats.partial_oldest_days > 0 ? 'warn' : 'default'}
                 variant="amber"
                 icon={FileText}
                 onClick={() => onOpenList('partiels')}
@@ -608,7 +681,11 @@ function DashboardView({
               <KpiCard
                 label={t('nhs.dossier.complete.label')}
                 value={stats.complete_docs}
-                sub={t('nhs.dossier.complete.sub')}
+                sub={
+                  stats.complete_oldest_days > 0
+                    ? t('nhs.dossier.complete.aging').replace('{n}', String(stats.complete_oldest_days))
+                    : t('nhs.dossier.complete.sub')
+                }
                 variant="green"
                 icon={CheckCircle2}
                 onClick={() => onOpenList('complets')}
@@ -666,7 +743,11 @@ function DashboardView({
               <KpiCard
                 label={t('nhs.tracking.sent.label')}
                 value={stats.sent_nhs}
-                sub={t('nhs.tracking.sent.sub')}
+                sub={
+                  stats.avg_days_to_submit != null
+                    ? t('nhs.tracking.sent.cycle').replace('{n}', String(stats.avg_days_to_submit))
+                    : t('nhs.tracking.sent.sub')
+                }
                 variant="blue"
                 icon={Send}
                 onClick={() => onOpenList('envoye-nhs')}
@@ -674,7 +755,18 @@ function DashboardView({
               <KpiCard
                 label={t('nhs.tracking.inReview.label')}
                 value={stats.in_review}
-                sub={t('nhs.tracking.inReview.sub')}
+                sub={
+                  stats.in_review > 0 && stats.in_review_avg_days != null
+                    ? t('nhs.tracking.inReview.aging').replace('{n}', String(stats.in_review_avg_days)) +
+                      (stats.in_review_over_sla > 0
+                        ? ' · ' +
+                          t('nhs.tracking.inReview.overSla')
+                            .replace('{m}', String(stats.in_review_over_sla))
+                            .replace('{sla}', String(stats.in_review_sla_days))
+                        : '')
+                    : t('nhs.tracking.inReview.sub')
+                }
+                subTone={stats.in_review_over_sla > 0 ? 'warn' : 'default'}
                 variant="amber"
                 icon={Clock}
                 onClick={() => onOpenList('envoye-nhs')}
@@ -744,6 +836,11 @@ function DashboardView({
                 onClick={() => onOpenList('envoye-nhs')}
               />
             </div>
+            {stats.avg_days_to_submit != null && (
+              <p className="text-[11px] text-gray-500 mt-4 border-t border-gray-100 pt-2.5">
+                {t('nhs.pipeline.cycle').replace('{n}', String(stats.avg_days_to_submit))}
+              </p>
+            )}
           </div>
         </>
       )}
