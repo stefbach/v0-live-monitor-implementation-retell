@@ -11,7 +11,7 @@ import type {
   BusinessMetrics,
   DashboardFilters,
 } from '@/lib/types'
-import { applyFilters } from '@/lib/filters'
+import { applyFilters, periodRange } from '@/lib/filters'
 import { useFiltersStore } from '@/lib/stores/filters-store'
 import { useRdvStore } from '@/lib/stores/rdv-store'
 import { computeBusinessMetrics } from '@/lib/leads'
@@ -73,12 +73,48 @@ export function useDashboardData(): DashboardData {
   const filters = useFiltersStore((s) => s.filters)
   const setConfirmedRdvLeadKeys = useRdvStore((s) => s.setConfirmedRdvLeadKeys)
 
+  // Align the fetch lookback to the selected period so the server only pulls
+  // what we need. With high-volume customers (5000+ calls/30d) fetching a
+  // fixed 30-day window for "Today" inflates the payload ~30× and slows the
+  // dashboard. Switching periods triggers a re-fetch — acceptable trade-off
+  // for ~5× faster initial load on Today/Yesterday.
+  //
+  // Add a small buffer (1 day for short windows, 1 hour for 30d) to absorb
+  // timezone edge cases and clock skew between the client and Retell.
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000
+  const fetchSinceMs = useMemo(() => {
+    const { start } = periodRange(filters.period, filters.customStart, filters.customEnd)
+    switch (filters.period) {
+      case 'today':
+      case 'yesterday':
+        return start - ONE_DAY_MS // 2-day window covers both today + yesterday
+      case '7d':
+        return start - ONE_DAY_MS // 8 days
+      case '30d':
+        return start - 60 * 60 * 1000 // 30d + 1h
+      case 'all':
+        return 0 // unbounded — server applies its own ceiling
+      case 'custom':
+      default:
+        return Math.max(0, start - ONE_DAY_MS)
+    }
+  }, [filters.period, filters.customStart, filters.customEnd, ONE_DAY_MS])
+
+  const swrKey = `/api/retell/calls?since=${fetchSinceMs}`
+
   const { data, error, isLoading, mutate } = useSWR<RawCallsData>(
-    '/api/retell/calls',
+    swrKey,
     fetcher,
     {
-      refreshInterval: 30000,
+      // Refresh in the background every 2 min. The Live tab has its own
+      // 5s-poll endpoint, so users who need real-time monitoring use that;
+      // 30s here was wasteful (full ~10 MB refetch + reparse) and caused
+      // perceptible UI jank on slow networks.
+      refreshInterval: 120000,
       revalidateOnFocus: true,
+      // Coalesce duplicate calls (e.g. when several components mount
+      // simultaneously) into a single network request.
+      dedupingInterval: 30000,
     }
   )
 

@@ -10,6 +10,7 @@ import type {
   CreneauKey,
 } from './types'
 import { computeEligibilityFromSummary } from './eligibility'
+import { getUKParts } from './timezone'
 
 export const DEFAULT_FILTERS: DashboardFilters = {
   period: '7d',
@@ -48,6 +49,23 @@ export const PERIODS: { id: PeriodId; label: string }[] = [
   { id: 'custom', label: 'Custom' },
 ]
 
+// UK-time midnight of the calendar day containing `now` (epoch ms).
+// We anchor on UK time because the dashboard tracks UK patients —
+// using server-local (US East) midnight cut off the morning's calls.
+function ukStartOfDay(now: Date): number {
+  const parts = getUKParts(now)
+  if (!parts) return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  // Build the ISO string for UK midnight; Date parses it as UTC, so we then
+  // adjust for the UK-vs-UTC offset (BST/GMT) the Intl parts implicitly used.
+  const ymd = parts.ymd // YYYY-MM-DD in UK calendar
+  // Re-derive the UK offset for that calendar day by comparing the UK
+  // wall-clock to UTC for `now`.
+  const ukWallMs = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute)
+  const offsetMs = ukWallMs - now.getTime() // positive when UK is ahead of UTC
+  const utcMidnightMs = Date.parse(`${ymd}T00:00:00Z`)
+  return utcMidnightMs - offsetMs
+}
+
 // Convert period to [start, end] timestamps (ms)
 export function periodRange(
   period: PeriodId,
@@ -55,7 +73,7 @@ export function periodRange(
   customEnd: string | null,
   now: Date = new Date()
 ): { start: number; end: number } {
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const startOfToday = ukStartOfDay(now)
   const end = now.getTime()
   switch (period) {
     case 'today':

@@ -60,6 +60,7 @@ function extractCustomAnalysis(
 }
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 interface RichCallsResponse {
   calls: CallLogEnriched[]
@@ -68,6 +69,16 @@ interface RichCallsResponse {
 }
 
 const EMPTY: RichCallsResponse = { calls: [], leads: [], agentNames: {} }
+
+// Retell list-calls is hard-capped at 1000 per page → we must paginate to see
+// the full picture. Caps below keep total cost bounded (1500 calls/day max
+// observed in prod; 30d ≈ 45k → well under the 50k ceiling).
+const MAX_PAGES = 50
+const MAX_CALLS_TOTAL = 50000
+const PAGE_LIMIT = 1000
+// Default lookback when the caller doesn't pass ?since= (e.g. legacy clients).
+// Generous enough to keep historical period filters working out of the box.
+const DEFAULT_LOOKBACK_MS = 60 * 24 * 60 * 60 * 1000 // 60 days
 
 const NO_ANSWER_DISCONNECTS = new Set([
   'dial_no_answer',
@@ -84,7 +95,96 @@ function isAnswered(durationSec: number, disconnect: string | null): boolean {
   return true
 }
 
-export async function GET(): Promise<NextResponse<ApiResponse<RichCallsResponse>>> {
+interface RetellListCallsBody {
+  limit: number
+  sort_order: 'ascending' | 'descending'
+  pagination_key?: string
+  filter_criteria?: {
+    start_timestamp?: { op: 'ge'; type: 'number'; value: number }
+  }
+}
+
+interface RetellListCallsResponse {
+  items?: Record<string, unknown>[]
+  calls?: Record<string, unknown>[] // older shape, kept as a safety net
+  pagination_key?: string
+  has_more?: boolean
+}
+
+async function fetchAllCallsSince(sinceMs: number): Promise<Record<string, unknown>[]> {
+  const all: Record<string, unknown>[] = []
+  let paginationKey: string | undefined
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const body: RetellListCallsBody = {
+      limit: PAGE_LIMIT,
+      sort_order: 'descending',
+      ...(paginationKey ? { pagination_key: paginationKey } : {}),
+      ...(sinceMs > 0
+        ? {
+            filter_criteria: {
+              start_timestamp: { op: 'ge', type: 'number', value: sinceMs },
+            },
+          }
+        : {}),
+    }
+    const res = await fetch('https://api.retellai.com/v2/list-calls', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) {
+      const errorBody = await res.text().catch(() => '')
+      throw new Error(`Retell API error: ${res.status} ${errorBody}`)
+    }
+    const json = (await res.json()) as unknown
+    // Retell v2 returns the list directly as an array, not wrapped in {items}
+    // or {calls}. Handle all three shapes defensively.
+    let items: Record<string, unknown>[]
+    let nextKey: string | undefined
+    let hasMore = false
+    if (Array.isArray(json)) {
+      items = json as Record<string, unknown>[]
+      // Pure array response: no pagination metadata, infer from page fill.
+      hasMore = items.length === PAGE_LIMIT
+      if (hasMore && items.length > 0) {
+        const last = items[items.length - 1] as { call_id?: string }
+        nextKey = last.call_id
+      }
+    } else {
+      const obj = (json ?? {}) as RetellListCallsResponse
+      items = Array.isArray(obj.items)
+        ? obj.items
+        : Array.isArray(obj.calls)
+          ? obj.calls
+          : []
+      hasMore = obj.has_more === true
+      nextKey = obj.pagination_key
+    }
+    if (page === 0) {
+      console.log(
+        `[calls] page 1: shape=${Array.isArray(json) ? 'array' : 'object'} items=${items.length} hasMore=${hasMore} nextKey=${nextKey ? 'present' : 'absent'}`
+      )
+    }
+    all.push(...items)
+    if (all.length >= MAX_CALLS_TOTAL) {
+      console.warn(
+        `[calls] hit MAX_CALLS_TOTAL=${MAX_CALLS_TOTAL} after page ${page + 1}; truncating`
+      )
+      break
+    }
+    if (!hasMore || !nextKey || items.length === 0) break
+    paginationKey = nextKey
+  }
+  console.log(`[calls] fetched ${all.length} total over ${Math.ceil(all.length / PAGE_LIMIT)} page(s)`)
+  return all
+}
+
+export async function GET(
+  request: Request
+): Promise<NextResponse<ApiResponse<RichCallsResponse>>> {
   const apiKeyConfigured = !!process.env.RETELL_API_KEY
   const useMockData = process.env.USE_MOCK_DATA === 'true' || !apiKeyConfigured
 
@@ -118,37 +218,43 @@ export async function GET(): Promise<NextResponse<ApiResponse<RichCallsResponse>
     })
   }
 
+  // Parse ?since=<epoch_ms> from the client (selected dashboard period).
+  // Falls back to a 60-day rolling window when the param is absent or invalid
+  // so legacy callers keep working.
+  const url = new URL(request.url)
+  const sinceParam = url.searchParams.get('since')
+  const sinceParsed = sinceParam ? Number(sinceParam) : NaN
+  const sinceMs = Number.isFinite(sinceParsed) && sinceParsed > 0
+    ? sinceParsed
+    : Date.now() - DEFAULT_LOOKBACK_MS
+
   try {
-    const [retellResponse, leads, agentNames] = await Promise.all([
-      fetch('https://api.retellai.com/v2/list-calls', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ limit: 1000, sort_order: 'descending' }),
-      }),
+    const [callsRaw, leads, agentNames] = await Promise.all([
+      fetchAllCallsSince(sinceMs),
       supabaseConfigured() ? fetchAllLeads() : Promise.resolve([] as Lead[]),
       getAgentNameMap(),
     ])
 
-    if (!retellResponse.ok) {
-      const errorBody = await retellResponse.text().catch(() => '')
-      throw new Error(`Retell API error: ${retellResponse.status} ${errorBody}`)
-    }
-
-    const data = await retellResponse.json()
-    const callsRaw: Record<string, unknown>[] = Array.isArray(data)
-      ? data
-      : Array.isArray((data as { calls?: unknown[] })?.calls)
-        ? ((data as { calls: Record<string, unknown>[] }).calls)
-        : []
-
     const leadByPhone = indexLeadsByPhone(leads)
+
+    // Defensive: drop any duplicate Retell calls that share the same call_id.
+    // Shouldn't happen via pagination but guards against edge re-deliveries.
+    const seenCallIds = new Set<string>()
+    const callsUnique = callsRaw.filter((c) => {
+      const id = (c as { call_id?: string }).call_id
+      if (!id || seenCallIds.has(id)) return false
+      seenCallIds.add(id)
+      return true
+    })
+    if (callsUnique.length < callsRaw.length) {
+      console.warn(
+        `[calls] dedup removed ${callsRaw.length - callsUnique.length} duplicate call(s)`
+      )
+    }
 
     // Build prelim calls (no attemptNumber yet)
     type Prelim = CallLogEnriched & { _key: string; _ts: number }
-    const prelim: Prelim[] = callsRaw.map((call) => {
+    const prelim: Prelim[] = callsUnique.map((call) => {
       const startTs = call.start_timestamp as number | string | undefined
       const endTs = call.end_timestamp as number | string | undefined
       const startMs = startTs != null ? new Date(startTs).getTime() : NaN
@@ -170,8 +276,10 @@ export async function GET(): Promise<NextResponse<ApiResponse<RichCallsResponse>
       const cost =
         typeof costObj?.combined_cost === 'number' ? costObj.combined_cost : null
       const disconnectionReason = (call.disconnection_reason as string) || null
-      const transcriptObj = call.transcript_object as unknown[] | undefined
-      const recordingUrl = (call.recording_url as string) || undefined
+      // transcript_object + recording_url are heavy (~80% of payload size on
+      // list-calls). They're only consumed by detail sheets which fetch
+      // /api/retell/call/[id] on click, so omit them here to keep the list
+      // response light.
       const summary =
         ((call.call_analysis as { call_summary?: string })?.call_summary as string) ||
         (call.call_summary as string) ||
@@ -206,7 +314,6 @@ export async function GET(): Promise<NextResponse<ApiResponse<RichCallsResponse>
         fromNumber,
         toNumber,
         userName: lead?.nom ?? undefined,
-        recordingUrl,
         summary,
         sentiment,
         cost,
@@ -222,9 +329,6 @@ export async function GET(): Promise<NextResponse<ApiResponse<RichCallsResponse>
         inVoicemail,
         voicemailSuspected,
         robotAwareness,
-        transcript: Array.isArray(transcriptObj)
-          ? transcriptObj.map((t, i) => mapTranscript(t, i))
-          : undefined,
         _key: normPhone || (lead?.id ?? ''),
         _ts: Number.isFinite(startMs) ? startMs : 0,
       }
@@ -260,10 +364,17 @@ export async function GET(): Promise<NextResponse<ApiResponse<RichCallsResponse>
       )
     }
 
-    return NextResponse.json({
-      data: { calls, leads, agentNames },
-      timestamp: new Date().toISOString(),
-    })
+    return NextResponse.json(
+      { data: { calls, leads, agentNames }, timestamp: new Date().toISOString() },
+      {
+        headers: {
+          // Edge cache: serve fresh for 20s, then up to 60s while we
+          // re-build in the background. Safe because the payload only
+          // changes when Retell logs new calls (slow signal).
+          'Cache-Control': 's-maxage=20, stale-while-revalidate=60',
+        },
+      }
+    )
   } catch (error) {
     return NextResponse.json(
       {
@@ -291,14 +402,3 @@ function mapRetellStatus(
   }
 }
 
-function mapTranscript(t: unknown, i: number) {
-  const obj = (t as Record<string, unknown>) ?? {}
-  const role = (obj.role as string) === 'user' ? 'user' : 'agent'
-  return {
-    id: `${i}`,
-    speaker: role as 'agent' | 'user',
-    text: (obj.content as string) || '',
-    startTime: typeof obj.start === 'number' ? obj.start : 0,
-    endTime: typeof obj.end === 'number' ? obj.end : 0,
-  }
-}

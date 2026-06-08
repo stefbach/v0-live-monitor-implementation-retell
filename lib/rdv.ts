@@ -62,22 +62,45 @@ function callHasConfirmationPack(c: CallLogEnriched): boolean {
   return c.lead?.email_sent === true && c.lead?.whatsapp_sent === true
 }
 
+// At least one of email_sent / whatsapp_sent is true. Used as a softer signal
+// when the CRM qualification already says RDV — covers the case where one of
+// the two n8n send-nodes failed (e.g. WATI 4xx) but the lead is genuinely a
+// confirmed RDV proven by a real long call.
+function callHasPartialConfirmationPack(c: CallLogEnriched): boolean {
+  return c.lead?.email_sent === true || c.lead?.whatsapp_sent === true
+}
+
+// CRM-side qualification claims this lead is an RDV.
+function callCrmSaysRdv(c: CallLogEnriched): boolean {
+  const q = (c.lead?.qualification ?? '').trim().toUpperCase()
+  return q === 'RDV CONFIRME' || q === 'RDV MEDECIN'
+}
+
 // A real conversation: an answered call that lasted more than 5 minutes.
 function isRealConversation(c: CallLogEnriched): boolean {
   return c.answered && c.duration > RDV_MIN_DURATION_SECONDS
 }
 
 export function isLeadRdvConfirmed(siblings: CallLogEnriched[]): boolean {
-  // Option 2: confirmation pack sent AND the lead had a real answered
-  // conversation (> 5 min) — excludes 0-second / no-answer leads that merely
-  // received outreach messages.
+  // Path 1: full confirmation pack (email + whatsapp) + real conversation.
+  // This is the strictest, most reliable path.
   if (
     siblings.some(callHasConfirmationPack) &&
     siblings.some(isRealConversation)
   ) {
     return true
   }
-  // Fallback: strict Retell call_outcome signals
+  // Path 2: CRM-confirmed RDV + real conversation + at least one send-pack
+  // flag set. Tolerates partial n8n send-pack failures (e.g. WATI rate-limited)
+  // while still requiring a real long answered call + a positive CRM tag.
+  if (
+    siblings.some(callCrmSaysRdv) &&
+    siblings.some(isRealConversation) &&
+    siblings.some(callHasPartialConfirmationPack)
+  ) {
+    return true
+  }
+  // Path 3: strict Retell call_outcome signals (legacy fallback).
   return siblings.some(
     (c) => isCallRdvConfirmedAlone(c) || transferredAndContinued(c, siblings)
   )
@@ -184,9 +207,17 @@ export function effectiveQualKey(
   // 3 — Voicemail (strongest non-RDV signal)
   if (c.inVoicemail || c.voicemailSuspected) return 'repondeur'
 
-  // 4 — Human handoff intent (transfer fired but strict RDV not met)
+  // 4 — Human handoff intent: only when the call was actually answered.
+  // The transfer_to_isabelle / human_transfer_triggered flags get set even
+  // on 0-second / unanswered attempts, which falsely inflated the
+  // "À PASSER À L'HUMAIN" card with phantom transfers. A real handoff needs
+  // a real conversation first.
   if (c.analysis?.humanTransferTriggered || c.analysis?.transferToIsabelle) {
-    return 'a_passer_a_humain'
+    if (c.answered) return 'a_passer_a_humain'
+    // Unanswered call with a transfer flag → route by the actual disconnect
+    // signal instead of the spurious handoff.
+    if (c.inVoicemail || c.voicemailSuspected) return 'repondeur'
+    return 'pas_de_reponse'
   }
 
   // 5 — Retell call_outcome direct map
