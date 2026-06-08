@@ -423,6 +423,8 @@ const fr: Dict = {
     'Les relances IA continuent en parallèle. Assigner à un coordinateur humain pour prise en charge personnalisée.',
   'nhs.detail.escalation.assignRain': 'Assigner à Rain',
   'nhs.detail.escalation.assignSummer': 'Assigner à Summer',
+  'nhs.detail.escalation.assignLabel': 'Assigner à :',
+  'nhs.toast.assigned': 'Assigné à {name}',
   'nhs.detail.escalation.note': "Créer une note d'escalade",
   'nhs.detail.loading': 'Chargement du dossier…',
 
@@ -858,6 +860,8 @@ const en: Dict = {
     'AI reminders continue in parallel. Assign to a human coordinator for personalised handling.',
   'nhs.detail.escalation.assignRain': 'Assign to Rain',
   'nhs.detail.escalation.assignSummer': 'Assign to Summer',
+  'nhs.detail.escalation.assignLabel': 'Assign to:',
+  'nhs.toast.assigned': 'Assigned to {name}',
   'nhs.detail.escalation.note': 'Create escalation note',
   'nhs.detail.loading': 'Loading file…',
 

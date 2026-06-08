@@ -1121,6 +1121,7 @@ function DetailView({
   const [error, setError] = useState<string | null>(null)
   const [pendingAction, setPendingAction] = useState<PatientActionName | null>(null)
   const [commFilter, setCommFilter] = useState<'all' | 'patient' | 'clinic' | 'nhs' | 'team'>('all')
+  const [assigning, setAssigning] = useState<string | null>(null)
 
   const fetchDetail = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true)
@@ -1214,6 +1215,26 @@ function DetailView({
     const last = commGroups[commGroups.length - 1]
     if (last && last.key === key) last.items.push(item)
     else commGroups.push({ key, label, items: [item] })
+  }
+
+  async function handleAssign(coordinator: 'Summer' | 'Rain' | 'Stormi') {
+    if (assigning) return
+    setAssigning(coordinator)
+    try {
+      const res = await fetch(`/api/nhs-patients/${encodeURIComponent(id)}/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coordinator }),
+      })
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
+      if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      toast.success(t('nhs.toast.assigned').replace('{name}', coordinator))
+      fetchDetail({ silent: true })
+    } catch (e) {
+      toast.error(t('nhs.toast.error'), { description: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setAssigning(null)
+    }
   }
 
   return (
@@ -1510,13 +1531,20 @@ function DetailView({
         <div className="bg-red-50 border border-red-200 rounded-xl p-4">
           <p className="text-sm font-semibold text-red-700">{t('nhs.detail.escalation.title')}</p>
           <p className="text-xs text-red-600 mt-1 mb-3">{t('nhs.detail.escalation.desc')}</p>
-          <div className="flex flex-wrap gap-2">
-            <button className="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500 text-white hover:bg-amber-600 inline-flex items-center gap-1.5">
-              <User className="w-3 h-3" /> {t('nhs.detail.escalation.assignRain')}
-            </button>
-            <button className="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500 text-white hover:bg-amber-600 inline-flex items-center gap-1.5">
-              <User className="w-3 h-3" /> {t('nhs.detail.escalation.assignSummer')}
-            </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-red-700">{t('nhs.detail.escalation.assignLabel')}</span>
+            {(['Summer', 'Rain', 'Stormi'] as const).map(coord => (
+              <button
+                key={coord}
+                type="button"
+                onClick={() => handleAssign(coord)}
+                disabled={assigning !== null}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500 text-white hover:bg-amber-600 inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {assigning === coord ? <RefreshCw className="w-3 h-3 animate-spin" /> : <User className="w-3 h-3" />}
+                {coord}
+              </button>
+            ))}
             <button className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white text-red-700 border border-red-200 hover:bg-red-100">
               {t('nhs.detail.escalation.note')}
             </button>
