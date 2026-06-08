@@ -1161,7 +1161,10 @@ function DetailView({
           </div>
           <div className="grid grid-cols-2 gap-2">
             {documents.map(doc => {
-              const tag = !doc.required ? 'optional' : doc.received ? 'received' : 'pending'
+              // Reflect the real received state first, so an optional doc that
+              // actually arrived (e.g. bank statements) shows "Received" — not a
+              // blanket "Optional". Optionality only governs the not-received case.
+              const tag = doc.received ? 'received' : doc.required ? 'pending' : 'optional'
               const tagCls = tag === 'received'
                 ? 'bg-emerald-50 text-emerald-700'
                 : tag === 'optional'
