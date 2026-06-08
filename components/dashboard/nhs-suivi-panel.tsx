@@ -108,16 +108,6 @@ const commPartyChip: Record<'patient' | 'clinic' | 'nhs' | 'team', string> = {
   nhs:     'bg-indigo-50 text-indigo-700 border-indigo-200',
   team:    'bg-amber-50 text-amber-700 border-amber-200',
 }
-const commKindDot: Record<string, string> = {
-  call:       'bg-blue-500',
-  email:      'bg-amber-500',
-  whatsapp:   'bg-emerald-500',
-  doc:        'bg-gray-500',
-  response:   'bg-emerald-500',
-  submission: 'bg-indigo-500',
-  assignment: 'bg-amber-500',
-}
-
 // Document checklist status styling. Signature docs (clinic-produced, sent out
 // for signature) use "Awaiting signature → Signed" rather than the patient
 // document "Pending → Received" wording.
@@ -127,6 +117,23 @@ const docStatusStyle: Record<string, { tag: string; icon: string; glyph: string 
   pending:           { tag: 'bg-gray-100 text-gray-600',      icon: 'bg-gray-200 text-gray-500',        glyph: '·' },
   awaitingSignature: { tag: 'bg-blue-50 text-blue-700',       icon: 'bg-blue-100 text-blue-700',        glyph: '✎' },
   optional:          { tag: 'bg-amber-50 text-amber-700',     icon: 'bg-amber-100 text-amber-700',      glyph: '○' },
+}
+
+// Channel icon + party colour for each communications-history row.
+const commKindIcon: Record<string, React.ElementType> = {
+  call:       Phone,
+  email:      Mail,
+  whatsapp:   MessageSquare,
+  doc:        FileText,
+  response:   CheckCircle2,
+  submission: Send,
+  assignment: User,
+}
+const commPartyText: Record<'patient' | 'clinic' | 'nhs' | 'team', string> = {
+  patient: 'text-sky-500',
+  clinic:  'text-violet-500',
+  nhs:     'text-indigo-500',
+  team:    'text-amber-500',
 }
 
 function KpiCard({
@@ -1218,34 +1225,44 @@ function DetailView({
 
         {/* Communications timeline */}
         <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">
-            {t('nhs.detail.comms.title')}
-          </p>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+              {t('nhs.detail.comms.title')}
+            </p>
+            {timeline.length > 0 && (
+              <span className="text-[11px] text-gray-400 tabular-nums">{timeline.length}</span>
+            )}
+          </div>
           {timeline.length === 0 ? (
             <p className="text-xs text-gray-400">{t('nhs.detail.comms.empty')}</p>
           ) : (
-            <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
-              {timeline.map((item, i) => (
-                <div key={i} className="flex gap-3 py-2 border-b border-gray-100 last:border-b-0 text-xs">
-                  <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${commKindDot[item.kind] ?? 'bg-gray-400'}`} />
-                  <div className="text-gray-400 whitespace-nowrap min-w-[78px]">
-                    {item.date
-                      ? new Date(item.date).toLocaleString(locale, {
-                          day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
-                        })
-                      : '—'}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="font-medium text-gray-700">{t(item.title_key)}</span>
-                      <span className={`inline-flex px-1.5 py-0.5 rounded-full border text-[10px] font-medium ${commPartyChip[item.party]}`}>
-                        {t(`nhs.detail.comms.party.${item.party}`)}
-                      </span>
+            <div className="max-h-96 overflow-y-auto -mr-2 pr-2">
+              {timeline.map((item, i) => {
+                const Icon = commKindIcon[item.kind] ?? FileText
+                const full = `${t(item.title_key)}${item.detail ? ' · ' + item.detail : ''}`
+                return (
+                  <div
+                    key={i}
+                    className="flex items-center gap-2.5 py-1.5 border-b border-gray-50 last:border-b-0 text-xs"
+                  >
+                    <Icon className={`w-3.5 h-3.5 shrink-0 ${commPartyText[item.party]}`} />
+                    <span className="shrink-0 min-w-[86px] text-gray-400 tabular-nums whitespace-nowrap">
+                      {item.date
+                        ? new Date(item.date).toLocaleString(locale, {
+                            day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+                          })
+                        : '—'}
+                    </span>
+                    <div className="flex-1 min-w-0 truncate text-gray-700" title={full}>
+                      <span className="font-medium">{t(item.title_key)}</span>
+                      {item.detail && <span className="text-gray-400">{' · '}{item.detail}</span>}
                     </div>
-                    {item.detail && <div className="text-gray-400 mt-0.5 break-words">{item.detail}</div>}
+                    <span className={`shrink-0 inline-flex px-1.5 py-0.5 rounded-full text-[10px] font-medium ${commPartyChip[item.party]}`}>
+                      {t(`nhs.detail.comms.party.${item.party}`)}
+                    </span>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>

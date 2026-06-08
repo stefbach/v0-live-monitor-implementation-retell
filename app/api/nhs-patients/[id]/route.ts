@@ -211,7 +211,10 @@ export async function GET(
     // ── Documents (patient-supplied vs clinic-generated) ──────────────────────
     for (const doc of docRows) {
       const generated = doc.source === 'generated'
-      const label = doc.category || doc.doc_field || doc.file_name || null
+      // Categories are stored like "5. Undue Delay" — drop the leading index so
+      // the history reads cleanly ("Undue Delay").
+      const raw = doc.category || doc.doc_field || doc.file_name || ''
+      const label = raw.replace(/^\s*\d+[.)]\s*/, '').trim() || null
       const detail =
         doc.status && doc.status !== 'received' ? `${label ?? ''} · ${doc.status}`.trim() : label
       add(
