@@ -383,6 +383,11 @@ const fr: Dict = {
   'nhs.detail.actions.relanceEmail': 'Relancer par email',
   'nhs.detail.actions.relanceWhatsapp': 'Relancer WhatsApp',
   'nhs.detail.actions.submit': 'Soumettre à la NHS',
+  'nhs.toast.relanceEmail': 'Relance email déclenchée',
+  'nhs.toast.relanceWhatsapp': 'Relance WhatsApp déclenchée',
+  'nhs.toast.submit': 'Soumission à la NHS déclenchée',
+  'nhs.toast.simulated': 'Mode test : webhook n8n non configuré, aucun envoi réel.',
+  'nhs.toast.error': "Échec de l'action",
   'nhs.detail.escalation.title': 'Escalade requise — Aucune réponse depuis 3 jours+',
   'nhs.detail.escalation.desc':
     'Les relances IA continuent en parallèle. Assigner à un coordinateur humain pour prise en charge personnalisée.',
@@ -783,6 +788,11 @@ const en: Dict = {
   'nhs.detail.actions.relanceEmail': 'Send email reminder',
   'nhs.detail.actions.relanceWhatsapp': 'Send WhatsApp reminder',
   'nhs.detail.actions.submit': 'Submit to NHS',
+  'nhs.toast.relanceEmail': 'Email reminder triggered',
+  'nhs.toast.relanceWhatsapp': 'WhatsApp reminder triggered',
+  'nhs.toast.submit': 'NHS submission triggered',
+  'nhs.toast.simulated': 'Test mode: n8n webhook not configured, nothing was actually sent.',
+  'nhs.toast.error': 'Action failed',
   'nhs.detail.escalation.title': 'Escalation required — No response for 3+ days',
   'nhs.detail.escalation.desc':
     'AI reminders continue in parallel. Assign to a human coordinator for personalised handling.',

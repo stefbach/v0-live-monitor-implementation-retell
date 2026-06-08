@@ -6,6 +6,7 @@ import {
   FileText, Send, Clock, XCircle, ChevronRight, TrendingUp,
   ArrowLeft, Search, Phone, AtSign, Calendar, Hourglass, User,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { useT } from '@/lib/hooks/use-t'
 
 // How often the live NHS dashboard re-fetches while the tab is visible (ms).
@@ -205,6 +206,61 @@ function Breadcrumb({
       })}
     </nav>
   )
+}
+
+// ── Patient actions ────────────────────────────────────────────────────────
+// The three quick actions (email reminder, WhatsApp reminder, NHS submission)
+// each POST to /api/nhs-patients/:id/action, which forwards to an n8n webhook
+// server-side. The send/write-back is owned by n8n; the dashboard just triggers
+// it and re-fetches so the panel reflects whatever the workflow wrote.
+
+type PatientActionName = 'relance-email' | 'relance-whatsapp' | 'submit-nhs'
+
+const ACTION_TOAST_KEY: Record<PatientActionName, string> = {
+  'relance-email': 'nhs.toast.relanceEmail',
+  'relance-whatsapp': 'nhs.toast.relanceWhatsapp',
+  'submit-nhs': 'nhs.toast.submit',
+}
+
+async function postPatientAction(
+  id: string,
+  action: PatientActionName,
+): Promise<{ simulated: boolean }> {
+  const res = await fetch(`/api/nhs-patients/${encodeURIComponent(id)}/action`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action }),
+  })
+  const data = (await res.json().catch(() => ({}))) as {
+    ok?: boolean
+    simulated?: boolean
+    error?: string
+  }
+  if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`)
+  return { simulated: !!data.simulated }
+}
+
+// Runs an action and surfaces the outcome as a toast. Returns true on success so
+// the caller can refresh. A "simulated" result (no n8n webhook configured yet) is
+// flagged so test-mode clicks aren't mistaken for real sends.
+async function runPatientAction(
+  id: string,
+  action: PatientActionName,
+  t: (k: string) => string,
+): Promise<boolean> {
+  try {
+    const { simulated } = await postPatientAction(id, action)
+    toast.success(
+      t(ACTION_TOAST_KEY[action]),
+      simulated ? { description: t('nhs.toast.simulated') } : undefined,
+    )
+    return true
+  } catch (e) {
+    toast.error(t('nhs.toast.error'), {
+      description: e instanceof Error ? e.message : String(e),
+    })
+    return false
+  }
 }
 
 // ── Main panel ─────────────────────────────────────────────────────────────
@@ -698,6 +754,15 @@ function ListView({
 
   const locale = lang === 'fr' ? 'fr-FR' : 'en-GB'
 
+  const [submittingId, setSubmittingId] = useState<string | null>(null)
+  async function handleSubmit(p: NhsPatient) {
+    if (submittingId) return
+    setSubmittingId(p.id)
+    const ok = await runPatientAction(p.id, 'submit-nhs', t)
+    setSubmittingId(null)
+    if (ok) fetchPatients({ silent: true })
+  }
+
   const filtered = (patients ?? []).filter(p => {
     if (filter === 'no-response') {
       if (!p.no_response) return false
@@ -866,7 +931,13 @@ function ListView({
                         </button>
                       )}
                       {p.status === 'complets' && (
-                        <button className="px-2.5 py-1 text-xs font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700">
+                        <button
+                          type="button"
+                          onClick={() => handleSubmit(p)}
+                          disabled={submittingId === p.id}
+                          className="px-2.5 py-1 text-xs font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700 inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {submittingId === p.id && <RefreshCw className="w-3 h-3 animate-spin" />}
                           {t('nhs.list.action.submit')}
                         </button>
                       )}
@@ -903,6 +974,7 @@ function DetailView({
   const [detail, setDetail] = useState<NhsPatientDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [pendingAction, setPendingAction] = useState<PatientActionName | null>(null)
 
   const fetchDetail = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true)
@@ -971,6 +1043,14 @@ function DetailView({
     ? Math.round((patient.docs_received / patient.docs_required) * 100)
     : 0
   const docComplete = patient.docs_received >= patient.docs_required
+
+  async function handleAction(action: PatientActionName) {
+    if (pendingAction) return
+    setPendingAction(action)
+    const ok = await runPatientAction(id, action, t)
+    setPendingAction(null)
+    if (ok) fetchDetail({ silent: true })
+  }
 
   return (
     <>
@@ -1178,17 +1258,38 @@ function DetailView({
           {t('nhs.detail.actions.title')}
         </p>
         <div className="flex flex-wrap gap-2">
-          <button className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 inline-flex items-center gap-1.5">
-            <Mail className="w-3 h-3" /> {t('nhs.detail.actions.relanceEmail')}
-          </button>
-          <button className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 inline-flex items-center gap-1.5">
-            <MessageSquare className="w-3 h-3" /> {t('nhs.detail.actions.relanceWhatsapp')}
+          <button
+            type="button"
+            onClick={() => handleAction('relance-email')}
+            disabled={pendingAction !== null}
+            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {pendingAction === 'relance-email'
+              ? <RefreshCw className="w-3 h-3 animate-spin" />
+              : <Mail className="w-3 h-3" />}
+            {t('nhs.detail.actions.relanceEmail')}
           </button>
           <button
-            disabled={!docComplete}
+            type="button"
+            onClick={() => handleAction('relance-whatsapp')}
+            disabled={pendingAction !== null}
+            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {pendingAction === 'relance-whatsapp'
+              ? <RefreshCw className="w-3 h-3 animate-spin" />
+              : <MessageSquare className="w-3 h-3" />}
+            {t('nhs.detail.actions.relanceWhatsapp')}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleAction('submit-nhs')}
+            disabled={!docComplete || pendingAction !== null}
             className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Send className="w-3 h-3" /> {t('nhs.detail.actions.submit')}
+            {pendingAction === 'submit-nhs'
+              ? <RefreshCw className="w-3 h-3 animate-spin" />
+              : <Send className="w-3 h-3" />}
+            {t('nhs.detail.actions.submit')}
           </button>
         </div>
       </div>
