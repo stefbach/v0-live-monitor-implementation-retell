@@ -3,10 +3,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   RefreshCw, AlertTriangle, CheckCircle2, Mail, MessageSquare,
-  FileText, Send, Clock, XCircle, ChevronRight, TrendingUp,
+  FileText, Send, Clock, XCircle, ChevronRight, ChevronDown, TrendingUp,
   ArrowLeft, Search, Phone, AtSign, Calendar, Hourglass, User,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
+} from '@/components/ui/dropdown-menu'
 import { useT } from '@/lib/hooks/use-t'
 
 // How often the live NHS dashboard re-fetches while the tab is visible (ms).
@@ -157,6 +160,80 @@ const commPartyText: Record<'patient' | 'clinic' | 'nhs' | 'team', string> = {
   team:    'text-amber-500',
 }
 const COMM_PARTIES = ['patient', 'clinic', 'nhs', 'team'] as const
+
+// Coordinators a patient can be assigned to (to call them).
+const COORDINATORS = ['Summer', 'Rain', 'Stormi'] as const
+type CoordinatorName = (typeof COORDINATORS)[number]
+const coordDot: Record<CoordinatorName, string> = {
+  Summer: 'bg-amber-500',
+  Rain:   'bg-sky-500',
+  Stormi: 'bg-violet-500',
+}
+
+// Self-contained "Assign to" dropdown — posts to the assign route, toasts, then
+// calls onAssigned to refresh. Reused in the patient list, the detail header and
+// the escalation box. Radix portals the menu, so the table's overflow doesn't
+// clip it.
+function AssignToMenu({
+  patientId, t, onAssigned, variant = 'compact',
+}: {
+  patientId: string
+  t: (k: string) => string
+  onAssigned?: () => void
+  variant?: 'compact' | 'solid'
+}) {
+  const [busy, setBusy] = useState<CoordinatorName | null>(null)
+
+  async function assign(coordinator: CoordinatorName) {
+    if (busy) return
+    setBusy(coordinator)
+    try {
+      const res = await fetch(`/api/nhs-patients/${encodeURIComponent(patientId)}/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coordinator }),
+      })
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
+      if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      toast.success(t('nhs.toast.assigned').replace('{name}', coordinator))
+      onAssigned?.()
+    } catch (e) {
+      toast.error(t('nhs.toast.error'), { description: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const triggerCls =
+    variant === 'solid'
+      ? 'bg-amber-500 text-white hover:bg-amber-600'
+      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          disabled={busy !== null}
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg disabled:opacity-50 ${triggerCls}`}
+        >
+          {busy ? <RefreshCw className="w-3 h-3 animate-spin" /> : <User className="w-3 h-3" />}
+          {t('nhs.assign.button')}
+          <ChevronDown className="w-3 h-3 opacity-70" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuLabel>{t('nhs.assign.label')}</DropdownMenuLabel>
+        {COORDINATORS.map(c => (
+          <DropdownMenuItem key={c} onSelect={() => assign(c)} className="cursor-pointer gap-2">
+            <span className={`w-1.5 h-1.5 rounded-full ${coordDot[c]}`} />
+            {c}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
 
 function KpiCard({
   label, value, sub, subTone = 'default', variant = 'default', icon: Icon, onClick,
@@ -340,6 +417,7 @@ export function NhsSuiviPanel() {
           t={t}
           lang={lang}
           onOpenList={(filter) => setView({ name: 'list', filter })}
+          onOpenPatient={(id) => setView({ name: 'detail', id, from: 'all' })}
         />
       )}
       {view.name === 'list' && (
@@ -368,14 +446,18 @@ export function NhsSuiviPanel() {
 
 // ── View 1: Dashboard ──────────────────────────────────────────────────────
 
+type CoordinatorQueue = { lead_id: string; open_id: string; name: string | null }
+
 function DashboardView({
-  t, lang, onOpenList,
+  t, lang, onOpenList, onOpenPatient,
 }: {
   t: (k: string) => string
   lang: 'fr' | 'en'
   onOpenList: (filter: ListFilter) => void
+  onOpenPatient: (id: string) => void
 }) {
   const [stats, setStats] = useState<NhsStats | null>(null)
+  const [assignments, setAssignments] = useState<Record<string, CoordinatorQueue[]> | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
@@ -396,16 +478,34 @@ function DashboardView({
     }
   }, [])
 
+  const fetchAssignments = useCallback(async () => {
+    try {
+      const res = await fetch('/api/nhs-assignments', { cache: 'no-store' })
+      if (!res.ok) return
+      const data = (await res.json()) as { queues?: Record<string, CoordinatorQueue[]> }
+      setAssignments(data.queues ?? {})
+    } catch {
+      /* keep the last good queues on a transient error */
+    }
+  }, [])
+
   // Live updates: poll while the tab is visible and refetch on focus, so the
   // panel reflects workflow writes in near real time. Background polls are
   // silent (no spinner / skeleton flash); the manual button stays explicit.
   useEffect(() => {
     fetchStats()
+    fetchAssignments()
     const intervalId = setInterval(() => {
-      if (document.visibilityState === 'visible') fetchStats({ silent: true })
+      if (document.visibilityState === 'visible') {
+        fetchStats({ silent: true })
+        fetchAssignments()
+      }
     }, LIVE_REFRESH_MS)
     const onFocus = () => {
-      if (document.visibilityState === 'visible') fetchStats({ silent: true })
+      if (document.visibilityState === 'visible') {
+        fetchStats({ silent: true })
+        fetchAssignments()
+      }
     }
     window.addEventListener('focus', onFocus)
     document.addEventListener('visibilitychange', onFocus)
@@ -414,7 +514,7 @@ function DashboardView({
       window.removeEventListener('focus', onFocus)
       document.removeEventListener('visibilitychange', onFocus)
     }
-  }, [fetchStats])
+  }, [fetchStats, fetchAssignments])
 
   const submitted = stats?.submitted ?? 0
   const target    = stats?.monthly_target ?? 30
@@ -605,6 +705,44 @@ function DashboardView({
                 {stats.stalled_count}
               </span>
             </button>
+          </div>
+
+          {/* Coordinator queues — who's assigned to whom (shared view for now) */}
+          <div>
+            <SectionLabel icon="👥">{t('nhs.coordinators.title')}</SectionLabel>
+            <div className="grid grid-cols-3 gap-4">
+              {COORDINATORS.map(coord => {
+                const list = assignments?.[coord] ?? []
+                return (
+                  <div key={coord} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-semibold text-gray-800 inline-flex items-center gap-1.5">
+                        <span className={`w-2 h-2 rounded-full ${coordDot[coord]}`} />
+                        {coord}
+                      </span>
+                      <span className="text-xs text-gray-400 tabular-nums">{list.length}</span>
+                    </div>
+                    {list.length === 0 ? (
+                      <p className="text-xs text-gray-400">{t('nhs.coordinators.empty')}</p>
+                    ) : (
+                      <div className="space-y-0.5 max-h-56 overflow-y-auto -mr-1 pr-1">
+                        {list.map(a => (
+                          <button
+                            key={a.lead_id}
+                            type="button"
+                            onClick={() => onOpenPatient(a.open_id)}
+                            className="w-full text-left flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50"
+                          >
+                            <span className="text-xs font-medium text-gray-700 truncate">{a.name ?? '—'}</span>
+                            <ChevronRight className="w-3.5 h-3.5 text-gray-300 shrink-0" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           </div>
 
           {/* Communication */}
@@ -1086,6 +1224,7 @@ function ListView({
                           {t('nhs.list.action.submit')}
                         </button>
                       )}
+                      <AssignToMenu patientId={p.id} t={t} onAssigned={() => fetchPatients({ silent: true })} />
                       <button
                         onClick={() => onOpenPatient(p.id)}
                         className="px-2.5 py-1 text-xs font-medium rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200"
@@ -1121,7 +1260,6 @@ function DetailView({
   const [error, setError] = useState<string | null>(null)
   const [pendingAction, setPendingAction] = useState<PatientActionName | null>(null)
   const [commFilter, setCommFilter] = useState<'all' | 'patient' | 'clinic' | 'nhs' | 'team'>('all')
-  const [assigning, setAssigning] = useState<string | null>(null)
 
   const fetchDetail = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true)
@@ -1217,26 +1355,6 @@ function DetailView({
     else commGroups.push({ key, label, items: [item] })
   }
 
-  async function handleAssign(coordinator: 'Summer' | 'Rain' | 'Stormi') {
-    if (assigning) return
-    setAssigning(coordinator)
-    try {
-      const res = await fetch(`/api/nhs-patients/${encodeURIComponent(id)}/assign`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ coordinator }),
-      })
-      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
-      if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`)
-      toast.success(t('nhs.toast.assigned').replace('{name}', coordinator))
-      fetchDetail({ silent: true })
-    } catch (e) {
-      toast.error(t('nhs.toast.error'), { description: e instanceof Error ? e.message : String(e) })
-    } finally {
-      setAssigning(null)
-    }
-  }
-
   return (
     <>
       <Breadcrumb
@@ -1275,6 +1393,7 @@ function DetailView({
           </div>
         </div>
         <div className="flex flex-col items-end gap-2">
+          <AssignToMenu patientId={id} t={t} onAssigned={() => fetchDetail({ silent: true })} />
           <span className={`inline-flex px-2.5 py-1 text-xs font-medium rounded-full border ${statusBadgeClass[patient.status]}`}>
             {t(`nhs.badge.${patient.status}`)}
           </span>
@@ -1532,19 +1651,7 @@ function DetailView({
           <p className="text-sm font-semibold text-red-700">{t('nhs.detail.escalation.title')}</p>
           <p className="text-xs text-red-600 mt-1 mb-3">{t('nhs.detail.escalation.desc')}</p>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-red-700">{t('nhs.detail.escalation.assignLabel')}</span>
-            {(['Summer', 'Rain', 'Stormi'] as const).map(coord => (
-              <button
-                key={coord}
-                type="button"
-                onClick={() => handleAssign(coord)}
-                disabled={assigning !== null}
-                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500 text-white hover:bg-amber-600 inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {assigning === coord ? <RefreshCw className="w-3 h-3 animate-spin" /> : <User className="w-3 h-3" />}
-                {coord}
-              </button>
-            ))}
+            <AssignToMenu patientId={id} t={t} onAssigned={() => fetchDetail({ silent: true })} variant="solid" />
             <button className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white text-red-700 border border-red-200 hover:bg-red-100">
               {t('nhs.detail.escalation.note')}
             </button>

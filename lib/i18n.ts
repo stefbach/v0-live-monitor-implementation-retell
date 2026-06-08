@@ -425,6 +425,10 @@ const fr: Dict = {
   'nhs.detail.escalation.assignSummer': 'Assigner à Summer',
   'nhs.detail.escalation.assignLabel': 'Assigner à :',
   'nhs.toast.assigned': 'Assigné à {name}',
+  'nhs.assign.button': 'Assigner',
+  'nhs.assign.label': 'Assigner à',
+  'nhs.coordinators.title': 'Files par coordinateur',
+  'nhs.coordinators.empty': 'Aucun patient assigné',
   'nhs.detail.escalation.note': "Créer une note d'escalade",
   'nhs.detail.loading': 'Chargement du dossier…',
 
@@ -862,6 +866,10 @@ const en: Dict = {
   'nhs.detail.escalation.assignSummer': 'Assign to Summer',
   'nhs.detail.escalation.assignLabel': 'Assign to:',
   'nhs.toast.assigned': 'Assigned to {name}',
+  'nhs.assign.button': 'Assign',
+  'nhs.assign.label': 'Assign to',
+  'nhs.coordinators.title': 'Coordinator queues',
+  'nhs.coordinators.empty': 'No patients assigned',
   'nhs.detail.escalation.note': 'Create escalation note',
   'nhs.detail.loading': 'Loading file…',
 
