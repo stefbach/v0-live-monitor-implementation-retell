@@ -74,7 +74,9 @@ interface NhsPatientDetail {
     kind: 'call' | 'email' | 'whatsapp' | 'doc' | 'response' | 'submission' | 'assignment'
     date: string | null
     title_key: string
+    name: string | null
     detail: string | null
+    count: number
   }>
 }
 
@@ -102,11 +104,19 @@ const nhsStatusBadgeClass: Record<string, string> = {
 
 // Communications history: each entry is colour-coded by counterparty (who the
 // communication was with) and by channel (the dot).
+// Distinct, accessible party colours (blue / teal / indigo / amber) — paired
+// with a text label everywhere, so meaning never rests on colour alone.
 const commPartyChip: Record<'patient' | 'clinic' | 'nhs' | 'team', string> = {
-  patient: 'bg-sky-50 text-sky-700 border-sky-200',
-  clinic:  'bg-violet-50 text-violet-700 border-violet-200',
-  nhs:     'bg-indigo-50 text-indigo-700 border-indigo-200',
-  team:    'bg-amber-50 text-amber-700 border-amber-200',
+  patient: 'bg-blue-50 text-blue-700',
+  clinic:  'bg-teal-50 text-teal-700',
+  nhs:     'bg-indigo-50 text-indigo-700',
+  team:    'bg-amber-50 text-amber-700',
+}
+const commPartyDot: Record<'patient' | 'clinic' | 'nhs' | 'team', string> = {
+  patient: 'bg-blue-500',
+  clinic:  'bg-teal-500',
+  nhs:     'bg-indigo-500',
+  team:    'bg-amber-500',
 }
 // Document checklist status styling. Signature docs (clinic-produced, sent out
 // for signature) use "Awaiting signature → Signed" rather than the patient
@@ -130,11 +140,12 @@ const commKindIcon: Record<string, React.ElementType> = {
   assignment: User,
 }
 const commPartyText: Record<'patient' | 'clinic' | 'nhs' | 'team', string> = {
-  patient: 'text-sky-500',
-  clinic:  'text-violet-500',
+  patient: 'text-blue-500',
+  clinic:  'text-teal-500',
   nhs:     'text-indigo-500',
   team:    'text-amber-500',
 }
+const COMM_PARTIES = ['patient', 'clinic', 'nhs', 'team'] as const
 
 function KpiCard({
   label, value, sub, variant = 'default', icon: Icon, onClick,
@@ -1012,6 +1023,7 @@ function DetailView({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [pendingAction, setPendingAction] = useState<PatientActionName | null>(null)
+  const [commFilter, setCommFilter] = useState<'all' | 'patient' | 'clinic' | 'nhs' | 'team'>('all')
 
   const fetchDetail = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true)
@@ -1087,6 +1099,24 @@ function DetailView({
     const ok = await runPatientAction(id, action, t)
     setPendingAction(null)
     if (ok) fetchDetail({ silent: true })
+  }
+
+  // Communications history: filter by party, then group by calendar day so the
+  // log reads as a dated feed (time only on each row). `timeline` is already
+  // sorted newest-first, so same-day entries are adjacent.
+  const filteredComms =
+    commFilter === 'all' ? timeline : timeline.filter(e => e.party === commFilter)
+  const commGroups: Array<{ key: string; label: string; items: typeof timeline }> = []
+  for (const item of filteredComms) {
+    const key = item.date
+      ? new Date(item.date).toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' })
+      : '__earlier__'
+    const label = item.date
+      ? new Date(item.date).toLocaleDateString(locale, { day: 'numeric', month: 'long' })
+      : t('nhs.detail.comms.earlier')
+    const last = commGroups[commGroups.length - 1]
+    if (last && last.key === key) last.items.push(item)
+    else commGroups.push({ key, label, items: [item] })
   }
 
   return (
@@ -1170,7 +1200,6 @@ function DetailView({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
         {/* Documents checklist */}
         <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">
@@ -1196,7 +1225,7 @@ function DetailView({
               {docComplete ? t('nhs.detail.docs.statusComplete') : t('nhs.detail.docs.statusIncomplete')}
             </span>
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
             {documents.map(doc => {
               // Signature docs (e.g. S2 Provider Declaration, Detailed Medical
               // Estimate) aren't received from the patient — the clinic sends them
@@ -1223,50 +1252,91 @@ function DetailView({
           </div>
         </div>
 
-        {/* Communications timeline */}
+        {/* Communications history */}
         <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
               {t('nhs.detail.comms.title')}
             </p>
-            {timeline.length > 0 && (
-              <span className="text-[11px] text-gray-400 tabular-nums">{timeline.length}</span>
+            {filteredComms.length > 0 && (
+              <span className="text-[11px] text-gray-400 tabular-nums">{filteredComms.length}</span>
             )}
           </div>
+
+          {/* Filter chips — also act as the party colour legend */}
+          <div className="flex flex-wrap items-center gap-1.5 mb-3">
+            <button
+              type="button"
+              onClick={() => setCommFilter('all')}
+              className={`px-2.5 py-1 text-[11px] font-medium rounded-full border transition-colors ${
+                commFilter === 'all'
+                  ? 'border-gray-300 bg-gray-100 text-gray-900'
+                  : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
+              }`}
+            >
+              {t('nhs.detail.comms.all')}
+            </button>
+            {COMM_PARTIES.map(p => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setCommFilter(p)}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-full border transition-colors ${
+                  commFilter === p
+                    ? 'border-gray-300 bg-gray-100 text-gray-900'
+                    : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${commPartyDot[p]}`} />
+                {t(`nhs.detail.comms.party.${p}`)}
+              </button>
+            ))}
+          </div>
+
           {timeline.length === 0 ? (
             <p className="text-xs text-gray-400">{t('nhs.detail.comms.empty')}</p>
+          ) : filteredComms.length === 0 ? (
+            <p className="text-xs text-gray-400">{t('nhs.detail.comms.emptyFilter')}</p>
           ) : (
-            <div className="max-h-96 overflow-y-auto -mr-2 pr-2">
-              {timeline.map((item, i) => {
-                const Icon = commKindIcon[item.kind] ?? FileText
-                const full = `${t(item.title_key)}${item.detail ? ' · ' + item.detail : ''}`
-                return (
-                  <div
-                    key={i}
-                    className="flex items-center gap-2.5 py-1.5 border-b border-gray-50 last:border-b-0 text-xs"
-                  >
-                    <Icon className={`w-3.5 h-3.5 shrink-0 ${commPartyText[item.party]}`} />
-                    <span className="shrink-0 min-w-[86px] text-gray-400 tabular-nums whitespace-nowrap">
-                      {item.date
-                        ? new Date(item.date).toLocaleString(locale, {
-                            day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-                          })
-                        : '—'}
-                    </span>
-                    <div className="flex-1 min-w-0 truncate text-gray-700" title={full}>
-                      <span className="font-medium">{t(item.title_key)}</span>
-                      {item.detail && <span className="text-gray-400">{' · '}{item.detail}</span>}
-                    </div>
-                    <span className={`shrink-0 inline-flex px-1.5 py-0.5 rounded-full text-[10px] font-medium ${commPartyChip[item.party]}`}>
-                      {t(`nhs.detail.comms.party.${item.party}`)}
-                    </span>
+            <div className="max-h-[26rem] overflow-y-auto -mr-2 pr-2">
+              {commGroups.map((group, gi) => (
+                <div key={group.key} className={gi > 0 ? 'mt-3' : ''}>
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-1">
+                    {group.label}
                   </div>
-                )
-              })}
+                  {group.items.map((item, i) => {
+                    const Icon = commKindIcon[item.kind] ?? FileText
+                    const primary = item.title_key
+                      ? t(item.title_key).replace('{name}', item.name ?? '')
+                      : item.name ?? ''
+                    const countSuffix = item.count > 1 ? ` ×${item.count}` : ''
+                    const tooltip = `${primary}${countSuffix}${item.detail ? ' · ' + item.detail : ''}`
+                    return (
+                      <div
+                        key={i}
+                        className="flex items-center gap-2.5 py-1.5 px-2 -mx-2 rounded-lg hover:bg-gray-50 text-xs"
+                      >
+                        <Icon className={`w-3.5 h-3.5 shrink-0 ${commPartyText[item.party]}`} />
+                        <span className="shrink-0 w-[44px] text-gray-400 tabular-nums">
+                          {item.date
+                            ? new Date(item.date).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
+                            : ''}
+                        </span>
+                        <div className="flex-1 min-w-0 truncate" title={tooltip}>
+                          <span className="font-medium text-gray-700">{primary}{countSuffix}</span>
+                          {item.detail && <span className="text-gray-400">{' · '}{item.detail}</span>}
+                        </div>
+                        <span className={`shrink-0 inline-flex px-1.5 py-0.5 rounded-full text-[10px] font-medium ${commPartyChip[item.party]}`}>
+                          {t(`nhs.detail.comms.party.${item.party}`)}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              ))}
             </div>
           )}
         </div>
-      </div>
 
       {/* NHS S2 status pipeline */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">

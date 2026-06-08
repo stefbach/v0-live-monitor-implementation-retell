@@ -24,7 +24,9 @@ export interface NhsPatientDetail {
     kind: CommKind
     date: string | null
     title_key: string
+    name: string | null
     detail: string | null
+    count: number
   }>
 }
 
@@ -179,71 +181,87 @@ export async function GET(
       kind: CommKind,
       date: string | null,
       title_key: string,
-      detail: string | null = null,
+      opts: { name?: string | null; detail?: string | null; count?: number } = {},
     ) => {
-      timeline.push({ party, kind, date, title_key, detail })
+      timeline.push({
+        party,
+        kind,
+        date,
+        title_key,
+        name: opts.name ?? null,
+        detail: opts.detail ?? null,
+        count: opts.count ?? 1,
+      })
     }
 
     // ── Patient ──────────────────────────────────────────────────────────────
     if (l.last_call_datetime) {
-      add('patient', 'call', l.last_call_datetime, 'nhs.detail.timeline.initialCall',
-        l.call_count && l.call_count > 1 ? `${l.call_count}×` : null)
+      add('patient', 'call', l.last_call_datetime, 'nhs.detail.timeline.initialCall', {
+        detail: l.call_count && l.call_count > 1 ? `${l.call_count}×` : null,
+      })
     }
-    if (l.email_sent) {
-      add('patient', 'email', asDate(l.first_mail), 'nhs.detail.timeline.initialEmail')
-    }
-    if (l.second_mail) {
-      add('patient', 'email', asDate(l.second_mail), 'nhs.detail.timeline.secondEmail')
-    }
-    if (l.whatsapp_sent) {
-      add('patient', 'whatsapp', null, 'nhs.detail.timeline.initialWhatsapp')
-    }
-    if (l.relance_email_sent) {
+    if (l.email_sent) add('patient', 'email', asDate(l.first_mail), 'nhs.detail.timeline.initialEmail')
+    if (l.second_mail) add('patient', 'email', asDate(l.second_mail), 'nhs.detail.timeline.secondEmail')
+    if (l.whatsapp_sent) add('patient', 'whatsapp', null, 'nhs.detail.timeline.initialWhatsapp')
+    if (l.relance_email_sent)
       add('patient', 'email', asDate(l.relance_email_date), 'nhs.detail.timeline.relanceEmail')
-    }
-    if (l.relance_whatsapp_sent) {
+    if (l.relance_whatsapp_sent)
       add('patient', 'whatsapp', asDate(l.relance_whatsapp_date), 'nhs.detail.timeline.relanceWhatsapp')
-    }
-    if (l.last_response_date) {
+    if (l.last_response_date)
       add('patient', 'response', l.last_response_date, 'nhs.detail.timeline.response')
-    }
 
     // ── Documents (patient-supplied vs clinic-generated) ──────────────────────
+    // Collapse identical documents from the same day into one row with a count,
+    // so a 3-file batch reads "Bank statements ×3" instead of three lines.
+    const docGroups = new Map<
+      string,
+      { party: CommParty; date: string | null; name: string | null; count: number }
+    >()
     for (const doc of docRows) {
       const generated = doc.source === 'generated'
-      // Categories are stored like "5. Undue Delay" — drop the leading index so
-      // the history reads cleanly ("Undue Delay").
+      // Categories are stored like "5. Undue Delay" — drop the leading index.
       const raw = doc.category || doc.doc_field || doc.file_name || ''
-      const label = raw.replace(/^\s*\d+[.)]\s*/, '').trim() || null
-      const detail =
-        doc.status && doc.status !== 'received' ? `${label ?? ''} · ${doc.status}`.trim() : label
-      add(
-        generated ? 'clinic' : 'patient',
-        'doc',
-        asDate(doc.received_at) ?? asDate(doc.created_at),
-        generated ? 'nhs.detail.timeline.docGenerated' : 'nhs.detail.timeline.docReceived',
-        detail,
-      )
+      const name = raw.replace(/^\s*\d+[.)]\s*/, '').trim() || null
+      const date = asDate(doc.received_at) ?? asDate(doc.created_at)
+      const party: CommParty = generated ? 'clinic' : 'patient'
+      const dayKey = date ? date.slice(0, 10) : 'undated'
+      const key = `${party}|${name ?? ''}|${dayKey}`
+      const g = docGroups.get(key)
+      if (g) {
+        g.count += 1
+        if (date && (!g.date || date > g.date)) g.date = date
+      } else {
+        docGroups.set(key, { party, date, name, count: 1 })
+      }
+    }
+    for (const g of docGroups.values()) {
+      // Empty title_key → the document name is the headline; the party chip
+      // conveys received (patient) vs prepared (clinic).
+      add(g.party, 'doc', g.date, '', { name: g.name, count: g.count })
     }
 
-    // ── Clinic / NHS (dossier-level milestones) ───────────────────────────────
+    // ── Clinic / NHS / Team milestones ────────────────────────────────────────
     if (d.last_analysed_at) {
-      add('team', 'doc', d.last_analysed_at, 'nhs.detail.timeline.docsAnalysed',
-        `${patient.docs_received} / ${patient.docs_required}`)
+      add('team', 'doc', d.last_analysed_at, 'nhs.detail.timeline.docsAnalysed', {
+        detail: `${patient.docs_received} / ${patient.docs_required}`,
+      })
     }
     const submittedDate = asDate(d.nhs_submission_date) ?? asDate(d.submission_date)
     if (d.submission_email_sent || submittedDate || d.dossier_status === 'SUBMITTED') {
-      add('nhs', 'submission', submittedDate, 'nhs.detail.timeline.nhsSubmitted', d.submitted_by ?? null)
+      add('nhs', 'submission', submittedDate, 'nhs.detail.timeline.nhsSubmitted', {
+        detail: d.submitted_by ?? null,
+      })
     }
     if (d.nhs_response_date || (d.nhs_submission_status && d.nhs_submission_status !== 'submitted')) {
-      add('nhs', 'response', asDate(d.nhs_response_date), 'nhs.detail.timeline.nhsResponse',
-        d.nhs_submission_status ?? null)
+      add('nhs', 'response', asDate(d.nhs_response_date), 'nhs.detail.timeline.nhsResponse', {
+        detail: d.nhs_submission_status ?? null,
+      })
     }
-
-    // ── Team (escalation assignments) ─────────────────────────────────────────
     for (const a of assignRows) {
-      const detail = [a.assigned_to, a.reason].filter(Boolean).join(' · ') || null
-      add('team', 'assignment', a.assigned_at, 'nhs.detail.timeline.assigned', detail)
+      add('team', 'assignment', a.assigned_at, 'nhs.detail.timeline.assigned', {
+        name: a.assigned_to,
+        detail: a.reason,
+      })
     }
 
     // Dated events newest-first; undated channel events (e.g. an initial email with
