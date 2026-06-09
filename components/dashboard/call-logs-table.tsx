@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { TableSkeleton } from './skeleton-loaders'
 import { DirectionIcon } from './direction-indicator'
+import { AssignMenu } from './assign-menu'
 import { QUAL_META } from '@/lib/qualifications'
 import { CRENEAUX } from '@/lib/timezone'
 import { callAgentLevel } from '@/lib/director-metrics'
@@ -232,6 +233,7 @@ export function CallLogsTable({
                         className="flex items-center justify-end gap-1"
                         onClick={(e) => e.stopPropagation()}
                       >
+                        {leadKey && <AssignMenu leadId={leadKey} size="xs" />}
                         <button
                           title="Écouter"
                           onClick={() => onCallSelect?.(call)}
