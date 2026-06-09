@@ -78,6 +78,8 @@ interface NhsPatient {
   escalade: boolean
   no_response: boolean
   bank_exception: boolean
+  qualification?: string | null
+  in_nhs_process?: boolean
 }
 
 interface NhsPatientDetail {
@@ -1390,6 +1392,20 @@ function DetailView({
                 </span>
               )}
             </div>
+            {(patient.qualification || patient.in_nhs_process) && (
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                {patient.qualification && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded-full bg-gray-100 text-gray-700 border border-gray-200">
+                    <Phone className="w-3 h-3" /> {t('nhs.detail.lastCall')} · {patient.qualification}
+                  </span>
+                )}
+                {patient.in_nhs_process && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                    {t('nhs.detail.inProcess')}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
         <div className="flex flex-col items-end gap-2">

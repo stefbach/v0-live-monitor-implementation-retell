@@ -17,7 +17,10 @@ type CommParty = 'patient' | 'clinic' | 'nhs' | 'team'
 type CommKind = 'call' | 'email' | 'whatsapp' | 'doc' | 'response' | 'submission' | 'assignment'
 
 export interface NhsPatientDetail {
-  patient: ReturnType<typeof buildPatient>
+  patient: ReturnType<typeof buildPatient> & {
+    qualification: string | null
+    in_nhs_process: boolean
+  }
   documents: Array<{ key: string; required: boolean; origin: string; received: boolean }>
   timeline: Array<{
     party: CommParty
@@ -99,7 +102,7 @@ export async function GET(
       .select(
         'id, nom, email, numero_telephone, patient_dob, email_sent, whatsapp_sent,' +
           ' relance_email_sent, relance_whatsapp_sent, relance_email_date, relance_whatsapp_date,' +
-          ' last_response_date, last_call_datetime, last_updated, call_count,' +
+          ' last_response_date, last_call_datetime, last_updated, call_count, qualification,' +
           ' first_mail:"1st_mail", second_mail:"2nd_mail"',
       )
       .eq('id', leadId)
@@ -124,6 +127,7 @@ export async function GET(
       last_call_datetime: string | null
       last_updated: string | null
       call_count: number | null
+      qualification: string | null
       first_mail: string | null
       second_mail: string | null
     }
@@ -273,7 +277,13 @@ export async function GET(
       return 0
     })
 
-    return NextResponse.json({ patient, documents, timeline })
+    const patientFull = {
+      ...patient,
+      qualification: l.qualification,
+      // "In the NHS process" per the clinic's definition: contacted on both channels.
+      in_nhs_process: !!l.email_sent && !!l.whatsapp_sent,
+    }
+    return NextResponse.json({ patient: patientFull, documents, timeline })
   } catch (err) {
     console.error('[nhs-patients/:id]', err)
     return NextResponse.json({ error: String(err) }, { status: 500 })
