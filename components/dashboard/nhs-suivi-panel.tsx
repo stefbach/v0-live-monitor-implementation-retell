@@ -58,9 +58,20 @@ interface NhsStats {
 
 type PatientStatus = 'complets' | 'partiels' | 'sans-reponse' | 'aucun-doc' | 'envoye-nhs'
 
+// NHS post-submission sub-states (from nhs_submission_status, set by the flow that
+// reads Dr Nedelcu's mailbox) and the clinic-document buckets each get their own
+// drill-down filter, so every card opens the exact patients it counts.
+type NhsSubStateFilter = 'in-review' | 'additional-info' | 'accepted' | 'refused'
+type ClinicDocFilter =
+  | 'clinic-medical-report'
+  | 'clinic-undue-delay'
+  | 'clinic-s2-provider'
+  | 'clinic-estimate'
+
 // List filters: the patient statuses, plus a synthetic "no-response" bucket that
-// spans everyone contacted who has not replied yet (broader than 3-day escalation).
-type ListFilter = PatientStatus | 'all' | 'no-response'
+// spans everyone contacted who has not replied yet (broader than 3-day escalation),
+// plus the NHS sub-state and clinic-document drill-downs.
+type ListFilter = PatientStatus | 'all' | 'no-response' | NhsSubStateFilter | ClinicDocFilter
 
 interface NhsPatient {
   id: string
@@ -80,6 +91,12 @@ interface NhsPatient {
   bank_exception: boolean
   qualification?: string | null
   in_nhs_process?: boolean
+  clinic_docs?: {
+    medical_report: boolean
+    undue_delay: boolean
+    s2_provider: boolean
+    estimate: boolean
+  }
 }
 
 interface NhsPatientDetail {
@@ -851,7 +868,8 @@ function DashboardView({
             </div>
           </div>
 
-          {/* Clinic documents — produced / signed by the clinic */}
+          {/* Clinic documents — produced / signed by the clinic. Each card drills
+              into the patients whose document is produced (matching the count). */}
           <div>
             <SectionLabel icon="🩺">{t('nhs.section.clinicDocs')}</SectionLabel>
             <div className="grid grid-cols-4 gap-4">
@@ -861,6 +879,7 @@ function DashboardView({
                 sub={t('nhs.clinic.medicalReport.sub')}
                 variant="blue"
                 icon={FileText}
+                onClick={() => onOpenList('clinic-medical-report')}
               />
               <KpiCard
                 label={t('nhs.clinic.undueDelay.label')}
@@ -868,6 +887,7 @@ function DashboardView({
                 sub={t('nhs.clinic.undueDelay.sub')}
                 variant="blue"
                 icon={FileText}
+                onClick={() => onOpenList('clinic-undue-delay')}
               />
               <KpiCard
                 label={t('nhs.clinic.s2Provider.label')}
@@ -875,6 +895,7 @@ function DashboardView({
                 sub={t('nhs.clinic.s2Provider.sub')}
                 variant="amber"
                 icon={Send}
+                onClick={() => onOpenList('clinic-s2-provider')}
               />
               <KpiCard
                 label={t('nhs.clinic.estimate.label')}
@@ -882,14 +903,17 @@ function DashboardView({
                 sub={t('nhs.clinic.estimate.sub')}
                 variant="amber"
                 icon={FileText}
+                onClick={() => onOpenList('clinic-estimate')}
               />
             </div>
           </div>
 
-          {/* NHS tracking */}
+          {/* NHS tracking — the post-submission funnel. Five stages, so this row is
+              5-up on wide screens (the other sections stay 4-up); it degrades to
+              3- then 2-up rather than orphaning the last card on its own line. */}
           <div>
             <SectionLabel icon="🏥">{t('nhs.section.nhsTracking')}</SectionLabel>
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               <KpiCard
                 label={t('nhs.tracking.sent.label')}
                 value={stats.sent_nhs}
@@ -919,7 +943,16 @@ function DashboardView({
                 subTone={stats.in_review_over_sla > 0 ? 'warn' : 'default'}
                 variant="amber"
                 icon={Clock}
-                onClick={() => onOpenList('envoye-nhs')}
+                onClick={() => onOpenList('in-review')}
+              />
+              <KpiCard
+                label={t('nhs.tracking.additionalInfo.label')}
+                value={stats.additional_info}
+                sub={t('nhs.tracking.additionalInfo.sub')}
+                subTone={stats.additional_info > 0 ? 'warn' : 'default'}
+                variant="amber"
+                icon={Mail}
+                onClick={() => onOpenList('additional-info')}
               />
               <KpiCard
                 label={t('nhs.tracking.accepted.label')}
@@ -927,7 +960,7 @@ function DashboardView({
                 sub={t('nhs.tracking.accepted.sub')}
                 variant="green"
                 icon={CheckCircle2}
-                onClick={() => onOpenList('envoye-nhs')}
+                onClick={() => onOpenList('accepted')}
               />
               <KpiCard
                 label={t('nhs.tracking.refused.label')}
@@ -935,7 +968,7 @@ function DashboardView({
                 sub={t('nhs.tracking.refused.sub')}
                 variant="red"
                 icon={XCircle}
-                onClick={() => onOpenList('envoye-nhs')}
+                onClick={() => onOpenList('refused')}
               />
             </div>
           </div>
@@ -1058,12 +1091,27 @@ function ListView({
     if (ok) fetchPatients({ silent: true })
   }
 
-  const filtered = (patients ?? []).filter(p => {
-    if (filter === 'no-response') {
-      if (!p.no_response) return false
-    } else if (filter !== 'all' && p.status !== filter) {
-      return false
+  // Each filter maps to a predicate. The NHS sub-state filters key off nhs_status
+  // (set from Dr Nedelcu's mailbox); the clinic-doc filters key off the produced
+  // flags; everything else falls back to the patient status bucket.
+  const matchesFilter = (p: NhsPatient): boolean => {
+    switch (filter) {
+      case 'all':                   return true
+      case 'no-response':           return p.no_response
+      case 'in-review':             return p.nhs_status === 'in_review'
+      case 'additional-info':       return p.nhs_status === 'additional_info'
+      case 'accepted':              return p.nhs_status === 'accepted'
+      case 'refused':               return p.nhs_status === 'refused'
+      case 'clinic-medical-report': return !!p.clinic_docs?.medical_report
+      case 'clinic-undue-delay':    return !!p.clinic_docs?.undue_delay
+      case 'clinic-s2-provider':    return !!p.clinic_docs?.s2_provider
+      case 'clinic-estimate':       return !!p.clinic_docs?.estimate
+      default:                      return p.status === filter
     }
+  }
+
+  const filtered = (patients ?? []).filter(p => {
+    if (!matchesFilter(p)) return false
     if (search) {
       const s = search.toLowerCase()
       const hay = `${p.name ?? ''} ${p.email ?? ''} ${p.phone ?? ''}`.toLowerCase()

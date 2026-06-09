@@ -71,6 +71,15 @@ export interface NhsPatient {
   escalade: boolean
   no_response: boolean
   bank_exception: boolean
+  // Clinic-produced documents (true once produced / signed by the clinic). Mirrors
+  // the four "documents to be produced by the clinic" cards, so each card can drill
+  // into the patients it counts.
+  clinic_docs: {
+    medical_report: boolean
+    undue_delay: boolean
+    s2_provider: boolean
+    estimate: boolean
+  }
 }
 
 function ageFromDob(dob: string | null): number | null {
@@ -159,6 +168,12 @@ export function buildPatient(d: DossierRow, l: LeadRow, threeDaysAgo: Date): Nhs
       !l.last_response_date &&
       received === 0,
     bank_exception: !!d.bank_statement_exception,
+    clinic_docs: {
+      medical_report: d['doc_medical_report'] === 'received',
+      undue_delay: d['doc_undue_delay_letter'] === 'received',
+      s2_provider: d['doc_s2_provider_declaration'] === 'received',
+      estimate: d['doc_detailed_medical_estimate'] === 'received',
+    },
   }
 }
 
