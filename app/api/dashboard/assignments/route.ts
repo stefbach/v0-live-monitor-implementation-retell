@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { fetchAssignments, createAssignment } from '@/lib/dashboard'
+import { fetchAssignments, createAssignment, unassignLead } from '@/lib/dashboard'
 import type { ApiResponse } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -29,12 +29,27 @@ export async function POST(
       assignedTo?: string
       reason?: string
       assignedBy?: string
+      action?: string
     }
-    if (!body.leadId || !body.assignedTo) {
+    if (!body.leadId) {
+      return NextResponse.json(
+        { data: null, error: 'leadId requis', timestamp: new Date().toISOString() },
+        { status: 400 }
+      )
+    }
+    // Unassign: close the lead's open assignment(s).
+    if (body.action === 'unassign') {
+      const res = await unassignLead(body.leadId)
+      return NextResponse.json(
+        { data: res, timestamp: new Date().toISOString() },
+        { status: res.ok ? 200 : 500 }
+      )
+    }
+    if (!body.assignedTo) {
       return NextResponse.json(
         {
           data: null,
-          error: 'leadId et assignedTo requis',
+          error: 'assignedTo requis',
           timestamp: new Date().toISOString(),
         },
         { status: 400 }

@@ -11,6 +11,7 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet'
 import { Badge } from '@/components/ui/badge'
+import { AssignMenu } from '../assign-menu'
 import { QUAL_META } from '@/lib/qualifications'
 import { CRENEAUX } from '@/lib/timezone'
 import { effectiveQualKey } from '@/lib/rdv'
@@ -81,11 +82,12 @@ export function DetailSlideOver({
           )}
           {calls.slice(0, 200).map((c) => {
             const q = QUAL_META[effectiveQualKey(c, confirmedRdvLeadKeys)]
+            const leadKey = c.meta?.leadId ?? c.lead?.id
             return (
+              <div key={c.id} className="flex items-start gap-2">
               <button
-                key={c.id}
                 onClick={() => onSelectCall(c)}
-                className="rounded-lg border border-border/50 p-3 text-left transition-colors hover:bg-muted/50"
+                className="min-w-0 flex-1 rounded-lg border border-border/50 p-3 text-left transition-colors hover:bg-muted/50"
               >
                 <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
@@ -152,6 +154,12 @@ export function DetailSlideOver({
                   </p>
                 )}
               </button>
+              {leadKey && (
+                <div className="shrink-0 pt-3">
+                  <AssignMenu leadId={leadKey} />
+                </div>
+              )}
+              </div>
             )
           })}
           {calls.length > 200 && (

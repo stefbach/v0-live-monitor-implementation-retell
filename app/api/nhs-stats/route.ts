@@ -18,7 +18,7 @@ export async function GET() {
       sb
         .from('leads_rdv')
         .select(
-          'email_sent, whatsapp_sent, relance_email_sent, relance_whatsapp_sent, last_response_date, relance_email_date'
+          'id, email_sent, whatsapp_sent, relance_email_sent, relance_whatsapp_sent, last_response_date, relance_email_date'
         )
         .not('email', 'is', null)
         .is('raison_ne_pas_rappeler', null),
@@ -30,7 +30,7 @@ export async function GET() {
       sb
         .from('nhs_dossiers')
         .select(
-          'lead_id, dossier_status, submission_ready, nhs_submission_status, bank_statement_exception, last_analysed_at'
+          'lead_id, dossier_status, submission_ready, nhs_submission_status, bank_statement_exception, last_analysed_at, created_at, updated_at, submission_date, nhs_submission_date, doc_s2_provider_declaration, doc_medical_report, doc_undue_delay_letter, doc_detailed_medical_estimate'
         ),
 
       sb
@@ -41,6 +41,7 @@ export async function GET() {
     ])
 
     type LeadRow = {
+      id: string
       email_sent: boolean | null
       whatsapp_sent: boolean | null
       relance_email_sent: boolean | null
@@ -56,6 +57,14 @@ export async function GET() {
       nhs_submission_status: string | null
       bank_statement_exception: boolean | null
       last_analysed_at: string | null
+      created_at: string | null
+      updated_at: string | null
+      submission_date: string | null
+      nhs_submission_date: string | null
+      doc_s2_provider_declaration: string | null
+      doc_medical_report: string | null
+      doc_undue_delay_letter: string | null
+      doc_detailed_medical_estimate: string | null
     }
 
     const leads = (leadsRes.data ?? []) as LeadRow[]
@@ -67,10 +76,90 @@ export async function GET() {
     )
     const target = (objectiveRes.data as { target?: number } | null)?.target ?? 30
 
+    // File-status reconciliation: count over the *emailed* lead population so the
+    // file-status buckets add up to "explanatory email sent". A patient who was
+    // emailed but has no dossier yet (or an empty one) counts as "no document".
+    const dossierByLead = new Map(
+      dossiers.filter(d => d.lead_id != null).map(d => [d.lead_id as string, d]),
+    )
+    let fileNoDocs = 0
+    let filePartial = 0
+    let fileComplete = 0
+    for (const l of leads) {
+      if (!l.email_sent) continue
+      const d = dossierByLead.get(l.id)
+      const s = d?.dossier_status ?? null
+      // Submitted / sent-to-NHS dossiers are tracked in the NHS section, not here.
+      if (s === 'SUBMITTED' || (d?.nhs_submission_status ?? null) != null) continue
+      if (s === 'COMPLETE' || s === 'READY_TO_SUBMIT' || d?.submission_ready) fileComplete++
+      else if (s === 'MISSING_DOCUMENTS') filePartial++
+      else fileNoDocs++
+    }
+
     const now = new Date()
     const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000)
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0)
     const daysRemaining = lastDay.getDate() - now.getDate()
+
+    // ── Time dimension (aging / SLA / cycle time / pace) ─────────────────────
+    // All derived from existing timestamps — no historical snapshot needed.
+    const STALLED_DAYS = 5
+    const IN_REVIEW_SLA_DAYS = 21
+
+    const ageDays = (ts: string | null | undefined): number | null => {
+      if (!ts) return null
+      const t = Date.parse(ts)
+      if (Number.isNaN(t)) return null
+      return (now.getTime() - t) / 86_400_000
+    }
+    // When a dossier last changed — the basis for "no change in N days".
+    const lastActivity = (d: DossierRow) => d.updated_at ?? d.last_analysed_at ?? d.created_at ?? null
+    const avg = (xs: number[]) => (xs.length ? Math.round(xs.reduce((s, a) => s + a, 0) / xs.length) : null)
+    const maxAge = (xs: number[]) => (xs.length ? Math.round(Math.max(...xs)) : 0)
+
+    const isSubmitted = (d: DossierRow) => d.dossier_status === 'SUBMITTED' || d.nhs_submission_status != null
+
+    // Partial dossiers that have gone quiet — "quietly stuck".
+    const partialAges = dossiers
+      .filter(d => d.dossier_status === 'MISSING_DOCUMENTS')
+      .map(d => ageDays(lastActivity(d)))
+      .filter((a): a is number => a != null)
+    const stalledAges = partialAges.filter(a => a >= STALLED_DAYS)
+
+    // Complete dossiers not yet submitted — how long the oldest has been ready.
+    const completeAges = dossiers
+      .filter(
+        d =>
+          !isSubmitted(d) &&
+          (d.dossier_status === 'COMPLETE' || d.dossier_status === 'READY_TO_SUBMIT' || d.submission_ready),
+      )
+      .map(d => ageDays(lastActivity(d)))
+      .filter((a): a is number => a != null)
+
+    // Cycle time: dossier creation → submission.
+    const submitCycles = dossiers
+      .filter(isSubmitted)
+      .map(d => {
+        const sub = d.nhs_submission_date ?? d.submission_date
+        if (!sub || !d.created_at) return null
+        const days = (Date.parse(sub) - Date.parse(d.created_at)) / 86_400_000
+        return Number.isFinite(days) && days >= 0 ? days : null
+      })
+      .filter((a): a is number => a != null)
+
+    // Time spent in NHS review.
+    const reviewAges = dossiers
+      .filter(d => d.nhs_submission_status === 'in_review')
+      .map(d => ageDays(d.nhs_submission_date))
+      .filter((a): a is number => a != null)
+
+    // Pace to the monthly target.
+    const submittedCount = dossiers.filter(d => d.dossier_status === 'SUBMITTED').length
+    const daysInMonth = lastDay.getDate()
+    const onPaceTarget = Math.round((target * now.getDate()) / daysInMonth)
+    const remainingToTarget = Math.max(target - submittedCount, 0)
+    const pacePerDay =
+      daysRemaining > 0 ? Math.round((remainingToTarget / daysRemaining) * 10) / 10 : remainingToTarget
 
     const stats = {
       initial_email_sent:    leads.filter(l => l.email_sent).length,
@@ -86,11 +175,9 @@ export async function GET() {
         new Date(l.relance_email_date) < threeDaysAgo
       ).length,
 
-      no_docs:        dossiers.filter(d => d.dossier_status === 'NO_DOCUMENTS_RECEIVED').length,
-      partial_docs:   dossiers.filter(d => d.dossier_status === 'MISSING_DOCUMENTS').length,
-      complete_docs:  dossiers.filter(d =>
-        d.dossier_status === 'COMPLETE' || d.dossier_status === 'READY_TO_SUBMIT'
-      ).length,
+      no_docs:        fileNoDocs,
+      partial_docs:   filePartial,
+      complete_docs:  fileComplete,
       ready_to_submit: dossiers.filter(d => d.submission_ready).length,
       submitted:       dossiers.filter(d => d.dossier_status === 'SUBMITTED').length,
 
@@ -101,8 +188,26 @@ export async function GET() {
       refused:         dossiers.filter(d => d.nhs_submission_status === 'refused').length,
       bank_exceptions: dossiers.filter(d => d.bank_statement_exception).length,
 
+      // Clinic-produced documents (received = produced / signed by the clinic).
+      clinic_s2_provider:    dossiers.filter(d => d.doc_s2_provider_declaration === 'received').length,
+      clinic_medical_report: dossiers.filter(d => d.doc_medical_report === 'received').length,
+      clinic_undue_delay:    dossiers.filter(d => d.doc_undue_delay_letter === 'received').length,
+      clinic_estimate:       dossiers.filter(d => d.doc_detailed_medical_estimate === 'received').length,
+
       monthly_target: target,
       days_remaining: daysRemaining,
+
+      // Time dimension
+      on_pace_target: onPaceTarget,
+      pace_per_day: pacePerDay,
+      stalled_count: stalledAges.length,
+      stalled_oldest_days: maxAge(stalledAges),
+      partial_oldest_days: maxAge(partialAges),
+      complete_oldest_days: maxAge(completeAges),
+      avg_days_to_submit: avg(submitCycles),
+      in_review_avg_days: avg(reviewAges),
+      in_review_over_sla: reviewAges.filter(a => a > IN_REVIEW_SLA_DAYS).length,
+      in_review_sla_days: IN_REVIEW_SLA_DAYS,
     }
 
     return NextResponse.json(stats)

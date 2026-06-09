@@ -24,6 +24,7 @@ import { useInsights } from '@/lib/hooks/use-insights'
 import { useFiltersStore } from '@/lib/stores/filters-store'
 import { PERIODS } from '@/lib/filters'
 import { InsightsChatbox } from './chatbox'
+import { AssignMenu } from '../assign-menu'
 import { CallDetailSheet } from '@/components/dashboard/call-detail-sheet'
 import type { CallLogEnriched } from '@/lib/types'
 import type {
@@ -581,11 +582,11 @@ function SentimentClimate({
               {hotLeads.map((hl: HotLead) => {
                 const c = callsById.get(hl.call_id)
                 return (
-                  <li key={hl.call_id}>
+                  <li key={hl.call_id} className="flex items-start gap-2">
                     <button
                       type="button"
                       onClick={() => onSelectCallId(c?.id ?? hl.call_id)}
-                      className="w-full rounded-md border border-border/50 bg-muted/20 p-2 text-left transition-colors hover:bg-muted/40"
+                      className="min-w-0 flex-1 rounded-md border border-border/50 bg-muted/20 p-2 text-left transition-colors hover:bg-muted/40"
                     >
                       <p className="text-sm font-medium truncate">
                         {c?.lead?.nom ?? `Call ${hl.call_id.slice(0, 8)}`}
@@ -597,6 +598,11 @@ function SentimentClimate({
                       </p>
                       <p className="text-xs text-muted-foreground">{hl.reason}</p>
                     </button>
+                    {c?.lead?.id && (
+                      <div className="shrink-0 pt-1">
+                        <AssignMenu leadId={c.lead.id} size="xs" />
+                      </div>
+                    )}
                   </li>
                 )
               })}

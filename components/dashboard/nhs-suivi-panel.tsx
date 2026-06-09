@@ -3,10 +3,19 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   RefreshCw, AlertTriangle, CheckCircle2, Mail, MessageSquare,
-  FileText, Send, Clock, XCircle, ChevronRight, TrendingUp,
-  ArrowLeft, Search, Phone, AtSign, Calendar, Hourglass, User,
+  FileText, Send, Clock, XCircle, ChevronRight, ChevronDown, TrendingUp,
+  ArrowLeft, Search, Phone, AtSign, Calendar, Hourglass, User, X,
 } from 'lucide-react'
+import { toast } from 'sonner'
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu'
 import { useT } from '@/lib/hooks/use-t'
+
+// How often the live NHS dashboard re-fetches while the tab is visible (ms).
+// Keeps the panel in sync with workflow writes (dossier status, documents,
+// communications) in near real time without a manual refresh.
+const LIVE_REFRESH_MS = 15_000
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -28,11 +37,41 @@ interface NhsStats {
   accepted: number
   refused: number
   bank_exceptions: number
+  clinic_s2_provider: number
+  clinic_medical_report: number
+  clinic_undue_delay: number
+  clinic_estimate: number
   monthly_target: number
   days_remaining: number
+  // Time dimension (aging / SLA / cycle time / pace)
+  on_pace_target: number
+  pace_per_day: number
+  stalled_count: number
+  stalled_oldest_days: number
+  partial_oldest_days: number
+  complete_oldest_days: number
+  avg_days_to_submit: number | null
+  in_review_avg_days: number | null
+  in_review_over_sla: number
+  in_review_sla_days: number
 }
 
 type PatientStatus = 'complets' | 'partiels' | 'sans-reponse' | 'aucun-doc' | 'envoye-nhs'
+
+// NHS post-submission sub-states (from nhs_submission_status, set by the flow that
+// reads Dr Nedelcu's mailbox) and the clinic-document buckets each get their own
+// drill-down filter, so every card opens the exact patients it counts.
+type NhsSubStateFilter = 'in-review' | 'additional-info' | 'accepted' | 'refused'
+type ClinicDocFilter =
+  | 'clinic-medical-report'
+  | 'clinic-undue-delay'
+  | 'clinic-s2-provider'
+  | 'clinic-estimate'
+
+// List filters: the patient statuses, plus a synthetic "no-response" bucket that
+// spans everyone contacted who has not replied yet (broader than 3-day escalation),
+// plus the NHS sub-state and clinic-document drill-downs.
+type ListFilter = PatientStatus | 'all' | 'no-response' | NhsSubStateFilter | ClinicDocFilter
 
 interface NhsPatient {
   id: string
@@ -48,24 +87,36 @@ interface NhsPatient {
   last_activity: string | null
   nhs_status: string | null
   escalade: boolean
+  no_response: boolean
   bank_exception: boolean
+  qualification?: string | null
+  in_nhs_process?: boolean
+  clinic_docs?: {
+    medical_report: boolean
+    undue_delay: boolean
+    s2_provider: boolean
+    estimate: boolean
+  }
 }
 
 interface NhsPatientDetail {
   patient: NhsPatient
-  documents: Array<{ key: string; required: boolean; received: boolean }>
+  documents: Array<{ key: string; required: boolean; origin: 'patient' | 'signature' | 'clinic'; received: boolean }>
   timeline: Array<{
-    kind: 'call' | 'email' | 'whatsapp' | 'doc' | 'response'
-    date: string
+    party: 'patient' | 'clinic' | 'nhs' | 'team'
+    kind: 'call' | 'email' | 'whatsapp' | 'doc' | 'response' | 'submission' | 'assignment'
+    date: string | null
     title_key: string
+    name: string | null
     detail: string | null
+    count: number
   }>
 }
 
 type View =
   | { name: 'dashboard' }
-  | { name: 'list'; filter: PatientStatus | 'all' }
-  | { name: 'detail'; id: string; from: PatientStatus | 'all' }
+  | { name: 'list'; filter: ListFilter }
+  | { name: 'detail'; id: string; from: ListFilter }
 
 // ── Shared bits ────────────────────────────────────────────────────────────
 
@@ -84,12 +135,142 @@ const nhsStatusBadgeClass: Record<string, string> = {
   refused:         'bg-red-50 text-red-700 border-red-200',
 }
 
+// Communications history: each entry is colour-coded by counterparty (who the
+// communication was with) and by channel (the dot).
+// Distinct, accessible party colours (blue / teal / indigo / amber) — paired
+// with a text label everywhere, so meaning never rests on colour alone.
+const commPartyChip: Record<'patient' | 'clinic' | 'nhs' | 'team', string> = {
+  patient: 'bg-blue-50 text-blue-700',
+  clinic:  'bg-teal-50 text-teal-700',
+  nhs:     'bg-indigo-50 text-indigo-700',
+  team:    'bg-amber-50 text-amber-700',
+}
+const commPartyDot: Record<'patient' | 'clinic' | 'nhs' | 'team', string> = {
+  patient: 'bg-blue-500',
+  clinic:  'bg-teal-500',
+  nhs:     'bg-indigo-500',
+  team:    'bg-amber-500',
+}
+// Document checklist status styling. Signature docs (clinic-produced, sent out
+// for signature) use "Awaiting signature → Signed" rather than the patient
+// document "Pending → Received" wording.
+const docStatusStyle: Record<string, { tag: string; icon: string; glyph: string }> = {
+  received:          { tag: 'bg-emerald-50 text-emerald-700', icon: 'bg-emerald-100 text-emerald-700', glyph: '✓' },
+  signed:            { tag: 'bg-emerald-50 text-emerald-700', icon: 'bg-emerald-100 text-emerald-700', glyph: '✓' },
+  pending:           { tag: 'bg-gray-100 text-gray-600',      icon: 'bg-gray-200 text-gray-500',        glyph: '·' },
+  awaitingSignature: { tag: 'bg-blue-50 text-blue-700',       icon: 'bg-blue-100 text-blue-700',        glyph: '✎' },
+  optional:          { tag: 'bg-amber-50 text-amber-700',     icon: 'bg-amber-100 text-amber-700',      glyph: '○' },
+}
+
+// Channel icon + party colour for each communications-history row.
+const commKindIcon: Record<string, React.ElementType> = {
+  call:       Phone,
+  email:      Mail,
+  whatsapp:   MessageSquare,
+  doc:        FileText,
+  response:   CheckCircle2,
+  submission: Send,
+  assignment: User,
+}
+const commPartyText: Record<'patient' | 'clinic' | 'nhs' | 'team', string> = {
+  patient: 'text-blue-500',
+  clinic:  'text-teal-500',
+  nhs:     'text-indigo-500',
+  team:    'text-amber-500',
+}
+const COMM_PARTIES = ['patient', 'clinic', 'nhs', 'team'] as const
+
+// Coordinators a patient can be assigned to (to call them).
+const COORDINATORS = ['Summer', 'Rain', 'Stormi'] as const
+type CoordinatorName = (typeof COORDINATORS)[number]
+const coordDot: Record<CoordinatorName, string> = {
+  Summer: 'bg-amber-500',
+  Rain:   'bg-sky-500',
+  Stormi: 'bg-violet-500',
+}
+
+// Self-contained "Assign to" dropdown — posts to the assign route, toasts, then
+// calls onAssigned to refresh. Reused in the patient list, the detail header and
+// the escalation box. Radix portals the menu, so the table's overflow doesn't
+// clip it.
+function AssignToMenu({
+  patientId, t, onAssigned, variant = 'compact',
+}: {
+  patientId: string
+  t: (k: string) => string
+  onAssigned?: () => void
+  variant?: 'compact' | 'solid'
+}) {
+  const [busy, setBusy] = useState<CoordinatorName | 'unassign' | null>(null)
+
+  async function post(body: Record<string, unknown>, okMessage: string, key: CoordinatorName | 'unassign') {
+    if (busy) return
+    setBusy(key)
+    try {
+      const res = await fetch(`/api/nhs-patients/${encodeURIComponent(patientId)}/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
+      if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      toast.success(okMessage)
+      onAssigned?.()
+    } catch (e) {
+      toast.error(t('nhs.toast.error'), { description: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setBusy(null)
+    }
+  }
+  const assign = (c: CoordinatorName) =>
+    post({ coordinator: c }, t('nhs.toast.assigned').replace('{name}', c), c)
+  const unassign = () => post({ action: 'unassign' }, t('nhs.toast.unassigned'), 'unassign')
+
+  const triggerCls =
+    variant === 'solid'
+      ? 'bg-amber-500 text-white hover:bg-amber-600'
+      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          disabled={busy !== null}
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg disabled:opacity-50 ${triggerCls}`}
+        >
+          {busy ? <RefreshCw className="w-3 h-3 animate-spin" /> : <User className="w-3 h-3" />}
+          {t('nhs.assign.button')}
+          <ChevronDown className="w-3 h-3 opacity-70" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuLabel>{t('nhs.assign.label')}</DropdownMenuLabel>
+        {COORDINATORS.map(c => (
+          <DropdownMenuItem key={c} onSelect={() => assign(c)} className="cursor-pointer gap-2">
+            <span className={`w-1.5 h-1.5 rounded-full ${coordDot[c]}`} />
+            {c}
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onSelect={() => unassign()}
+          className="cursor-pointer gap-2 text-red-600 focus:text-red-600"
+        >
+          <X className="w-3.5 h-3.5" /> {t('nhs.assign.unassign')}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 function KpiCard({
-  label, value, sub, variant = 'default', icon: Icon, onClick,
+  label, value, sub, subTone = 'default', variant = 'default', icon: Icon, onClick,
 }: {
   label: string
   value: number
   sub?: string
+  subTone?: 'default' | 'warn'
   variant?: 'default' | 'blue' | 'amber' | 'green' | 'red' | 'neutral'
   icon?: React.ElementType
   onClick?: () => void
@@ -125,7 +306,11 @@ function KpiCard({
       <p className={`text-3xl font-semibold tabular-nums ${valueColors[variant]}`}>
         {value}
       </p>
-      {sub && <p className="text-xs text-gray-400 mt-1.5 leading-tight">{sub}</p>}
+      {sub && (
+        <p className={`text-xs mt-1.5 leading-tight ${subTone === 'warn' ? 'text-amber-600 font-medium' : 'text-gray-400'}`}>
+          {sub}
+        </p>
+      )}
     </button>
   )
 }
@@ -193,6 +378,61 @@ function Breadcrumb({
   )
 }
 
+// ── Patient actions ────────────────────────────────────────────────────────
+// The three quick actions (email reminder, WhatsApp reminder, NHS submission)
+// each POST to /api/nhs-patients/:id/action, which forwards to an n8n webhook
+// server-side. The send/write-back is owned by n8n; the dashboard just triggers
+// it and re-fetches so the panel reflects whatever the workflow wrote.
+
+type PatientActionName = 'relance-email' | 'relance-whatsapp' | 'submit-nhs'
+
+const ACTION_TOAST_KEY: Record<PatientActionName, string> = {
+  'relance-email': 'nhs.toast.relanceEmail',
+  'relance-whatsapp': 'nhs.toast.relanceWhatsapp',
+  'submit-nhs': 'nhs.toast.submit',
+}
+
+async function postPatientAction(
+  id: string,
+  action: PatientActionName,
+): Promise<{ simulated: boolean }> {
+  const res = await fetch(`/api/nhs-patients/${encodeURIComponent(id)}/action`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action }),
+  })
+  const data = (await res.json().catch(() => ({}))) as {
+    ok?: boolean
+    simulated?: boolean
+    error?: string
+  }
+  if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`)
+  return { simulated: !!data.simulated }
+}
+
+// Runs an action and surfaces the outcome as a toast. Returns true on success so
+// the caller can refresh. A "simulated" result (no n8n webhook configured yet) is
+// flagged so test-mode clicks aren't mistaken for real sends.
+async function runPatientAction(
+  id: string,
+  action: PatientActionName,
+  t: (k: string) => string,
+): Promise<boolean> {
+  try {
+    const { simulated } = await postPatientAction(id, action)
+    toast.success(
+      t(ACTION_TOAST_KEY[action]),
+      simulated ? { description: t('nhs.toast.simulated') } : undefined,
+    )
+    return true
+  } catch (e) {
+    toast.error(t('nhs.toast.error'), {
+      description: e instanceof Error ? e.message : String(e),
+    })
+    return false
+  }
+}
+
 // ── Main panel ─────────────────────────────────────────────────────────────
 
 export function NhsSuiviPanel() {
@@ -206,6 +446,7 @@ export function NhsSuiviPanel() {
           t={t}
           lang={lang}
           onOpenList={(filter) => setView({ name: 'list', filter })}
+          onOpenPatient={(id) => setView({ name: 'detail', id, from: 'all' })}
         />
       )}
       {view.name === 'list' && (
@@ -234,20 +475,24 @@ export function NhsSuiviPanel() {
 
 // ── View 1: Dashboard ──────────────────────────────────────────────────────
 
+type CoordinatorQueue = { lead_id: string; open_id: string; name: string | null }
+
 function DashboardView({
-  t, lang, onOpenList,
+  t, lang, onOpenList, onOpenPatient,
 }: {
   t: (k: string) => string
   lang: 'fr' | 'en'
-  onOpenList: (filter: PatientStatus | 'all') => void
+  onOpenList: (filter: ListFilter) => void
+  onOpenPatient: (id: string) => void
 }) {
   const [stats, setStats] = useState<NhsStats | null>(null)
+  const [assignments, setAssignments] = useState<Record<string, CoordinatorQueue[]> | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
 
-  const fetchStats = useCallback(async () => {
-    setLoading(true)
+  const fetchStats = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true)
     setError(null)
     try {
       const res = await fetch('/api/nhs-stats', { cache: 'no-store' })
@@ -258,11 +503,47 @@ function DashboardView({
     } catch (e) {
       setError(String(e))
     } finally {
-      setLoading(false)
+      if (!opts?.silent) setLoading(false)
     }
   }, [])
 
-  useEffect(() => { fetchStats() }, [fetchStats])
+  const fetchAssignments = useCallback(async () => {
+    try {
+      const res = await fetch('/api/nhs-assignments', { cache: 'no-store' })
+      if (!res.ok) return
+      const data = (await res.json()) as { queues?: Record<string, CoordinatorQueue[]> }
+      setAssignments(data.queues ?? {})
+    } catch {
+      /* keep the last good queues on a transient error */
+    }
+  }, [])
+
+  // Live updates: poll while the tab is visible and refetch on focus, so the
+  // panel reflects workflow writes in near real time. Background polls are
+  // silent (no spinner / skeleton flash); the manual button stays explicit.
+  useEffect(() => {
+    fetchStats()
+    fetchAssignments()
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchStats({ silent: true })
+        fetchAssignments()
+      }
+    }, LIVE_REFRESH_MS)
+    const onFocus = () => {
+      if (document.visibilityState === 'visible') {
+        fetchStats({ silent: true })
+        fetchAssignments()
+      }
+    }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onFocus)
+    return () => {
+      clearInterval(intervalId)
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onFocus)
+    }
+  }, [fetchStats, fetchAssignments])
 
   const submitted = stats?.submitted ?? 0
   const target    = stats?.monthly_target ?? 30
@@ -273,6 +554,12 @@ function DashboardView({
   const relanceEmail = stats?.relance_email_sent  ?? 0
   const responses    = stats?.responses_received  ?? 0
   const completeDocs = stats?.complete_docs       ?? 0
+
+  // Pace to the monthly target: where you should be by today vs where you are.
+  const onPaceTarget = stats?.on_pace_target ?? 0
+  const pacePerDay   = stats?.pace_per_day ?? 0
+  const behindPace   = submitted < onPaceTarget
+  const onPacePct    = target > 0 ? Math.round((onPaceTarget / target) * 100) : 0
 
   const p = (v: number, base: number) =>
     base > 0 ? Math.round((v / base) * 100) : 0
@@ -290,11 +577,15 @@ function DashboardView({
           <p className="text-sm text-gray-500 mt-0.5">{t('nhs.subtitle')}</p>
         </div>
         <div className="flex items-center gap-3">
+          <span className="relative flex h-2 w-2" title="Live · auto-refresh">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+          </span>
           <span className="text-xs text-gray-400">
             {lastRefresh.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}
           </span>
           <button
-            onClick={fetchStats}
+            onClick={() => fetchStats()}
             disabled={loading}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors disabled:opacity-50"
           >
@@ -331,9 +622,18 @@ function DashboardView({
                   <span className="text-4xl font-bold tabular-nums">{submitted}</span>
                   <span className="text-xl opacity-60">/ {target}</span>
                 </div>
-                <p className="text-sm opacity-70 mt-1">
+                <p className="text-sm opacity-80 mt-1">
                   {t('nhs.objective.submittedThisMonth')} · {remaining}{' '}
                   {plural('nhs.objective.remainingToReach', remaining)}
+                  <span className="mx-1.5 opacity-50">•</span>
+                  <span className="font-semibold">
+                    {t('nhs.objective.needPerDay').replace('{n}', String(pacePerDay))}
+                  </span>
+                  <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full bg-white/15 text-[11px] font-medium align-middle">
+                    {behindPace
+                      ? `▼ ${t('nhs.objective.behindPace')}`
+                      : `▲ ${t('nhs.objective.onPaceLabel')}`}
+                  </span>
                 </p>
               </div>
               <div className="w-52 shrink-0">
@@ -347,7 +647,19 @@ function DashboardView({
                     style={{ width: `${Math.min(progress, 100)}%` }}
                   />
                 </div>
-                <p className="text-xs opacity-60 mt-2">
+                {/* On-pace marker: where the count should be by today */}
+                <div className="relative h-3.5">
+                  <div
+                    className="absolute top-0 flex flex-col items-center"
+                    style={{ left: `${Math.min(onPacePct, 100)}%`, transform: 'translateX(-50%)' }}
+                  >
+                    <div className="w-0.5 h-2 bg-amber-300" />
+                    <span className="text-[10px] text-amber-200 whitespace-nowrap">
+                      {t('nhs.objective.onPace').replace('{n}', String(onPaceTarget))}
+                    </span>
+                  </div>
+                </div>
+                <p className="text-xs opacity-60">
                   {stats.days_remaining} {plural('nhs.objective.daysRemaining', stats.days_remaining)}
                 </p>
               </div>
@@ -397,6 +709,69 @@ function DashboardView({
                 {stats.ready_to_submit}
               </span>
             </button>
+
+            {/* Aging / SLA — partial dossiers that have gone quiet */}
+            <button
+              type="button"
+              onClick={() => onOpenList('partiels')}
+              className="w-full flex items-center gap-4 rounded-xl p-4 bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors text-left"
+            >
+              <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center shrink-0">
+                <Clock className="w-4 h-4 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-amber-700 flex items-center gap-1.5">
+                  {t('nhs.alert.stalled.title')}
+                  <span className="text-[10px] font-bold bg-amber-200 text-amber-800 px-1 py-px rounded">SLA</span>
+                </p>
+                <p className="text-xs text-amber-600">
+                  {stats.stalled_count > 0
+                    ? t('nhs.alert.stalled.desc').replace('{n}', String(stats.stalled_oldest_days))
+                    : t('nhs.alert.stalled.descEmpty')}
+                </p>
+              </div>
+              <span className="text-3xl font-bold text-amber-600 tabular-nums shrink-0">
+                {stats.stalled_count}
+              </span>
+            </button>
+          </div>
+
+          {/* Coordinator queues — who's assigned to whom (shared view for now) */}
+          <div>
+            <SectionLabel icon="👥">{t('nhs.coordinators.title')}</SectionLabel>
+            <div className="grid grid-cols-3 gap-4">
+              {COORDINATORS.map(coord => {
+                const list = assignments?.[coord] ?? []
+                return (
+                  <div key={coord} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-semibold text-gray-800 inline-flex items-center gap-1.5">
+                        <span className={`w-2 h-2 rounded-full ${coordDot[coord]}`} />
+                        {coord}
+                      </span>
+                      <span className="text-xs text-gray-400 tabular-nums">{list.length}</span>
+                    </div>
+                    {list.length === 0 ? (
+                      <p className="text-xs text-gray-400">{t('nhs.coordinators.empty')}</p>
+                    ) : (
+                      <div className="space-y-0.5 max-h-56 overflow-y-auto -mr-1 pr-1">
+                        {list.map(a => (
+                          <button
+                            key={a.lead_id}
+                            type="button"
+                            onClick={() => onOpenPatient(a.open_id)}
+                            className="w-full text-left flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50"
+                          >
+                            <span className="text-xs font-medium text-gray-700 truncate">{a.name ?? '—'}</span>
+                            <ChevronRight className="w-3.5 h-3.5 text-gray-300 shrink-0" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           </div>
 
           {/* Communication */}
@@ -460,7 +835,12 @@ function DashboardView({
               <KpiCard
                 label={t('nhs.dossier.partial.label')}
                 value={stats.partial_docs}
-                sub={t('nhs.dossier.partial.sub')}
+                sub={
+                  stats.partial_oldest_days > 0
+                    ? t('nhs.dossier.partial.aging').replace('{n}', String(stats.partial_oldest_days))
+                    : t('nhs.dossier.partial.sub')
+                }
+                subTone={stats.partial_oldest_days > 0 ? 'warn' : 'default'}
                 variant="amber"
                 icon={FileText}
                 onClick={() => onOpenList('partiels')}
@@ -468,7 +848,11 @@ function DashboardView({
               <KpiCard
                 label={t('nhs.dossier.complete.label')}
                 value={stats.complete_docs}
-                sub={t('nhs.dossier.complete.sub')}
+                sub={
+                  stats.complete_oldest_days > 0
+                    ? t('nhs.dossier.complete.aging').replace('{n}', String(stats.complete_oldest_days))
+                    : t('nhs.dossier.complete.sub')
+                }
                 variant="green"
                 icon={CheckCircle2}
                 onClick={() => onOpenList('complets')}
@@ -484,14 +868,60 @@ function DashboardView({
             </div>
           </div>
 
-          {/* NHS tracking */}
+          {/* Clinic documents — produced / signed by the clinic. Each card drills
+              into the patients whose document is produced (matching the count). */}
+          <div>
+            <SectionLabel icon="🩺">{t('nhs.section.clinicDocs')}</SectionLabel>
+            <div className="grid grid-cols-4 gap-4">
+              <KpiCard
+                label={t('nhs.clinic.medicalReport.label')}
+                value={stats.clinic_medical_report}
+                sub={t('nhs.clinic.medicalReport.sub')}
+                variant="blue"
+                icon={FileText}
+                onClick={() => onOpenList('clinic-medical-report')}
+              />
+              <KpiCard
+                label={t('nhs.clinic.undueDelay.label')}
+                value={stats.clinic_undue_delay}
+                sub={t('nhs.clinic.undueDelay.sub')}
+                variant="blue"
+                icon={FileText}
+                onClick={() => onOpenList('clinic-undue-delay')}
+              />
+              <KpiCard
+                label={t('nhs.clinic.s2Provider.label')}
+                value={stats.clinic_s2_provider}
+                sub={t('nhs.clinic.s2Provider.sub')}
+                variant="amber"
+                icon={Send}
+                onClick={() => onOpenList('clinic-s2-provider')}
+              />
+              <KpiCard
+                label={t('nhs.clinic.estimate.label')}
+                value={stats.clinic_estimate}
+                sub={t('nhs.clinic.estimate.sub')}
+                variant="amber"
+                icon={FileText}
+                onClick={() => onOpenList('clinic-estimate')}
+              />
+            </div>
+          </div>
+
+          {/* NHS tracking — the post-submission funnel. Five stages, so this row is
+              5-up on wide screens (the other sections stay 4-up); it degrades to
+              3- then 2-up rather than orphaning the last card on its own line. */}
           <div>
             <SectionLabel icon="🏥">{t('nhs.section.nhsTracking')}</SectionLabel>
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               <KpiCard
                 label={t('nhs.tracking.sent.label')}
                 value={stats.sent_nhs}
-                sub={t('nhs.tracking.sent.sub')}
+                sub={
+                  stats.avg_days_to_submit != null
+                    ? t('nhs.tracking.sent.cycle').replace('{n}', String(stats.avg_days_to_submit))
+                    : t('nhs.tracking.sent.sub')
+                }
                 variant="blue"
                 icon={Send}
                 onClick={() => onOpenList('envoye-nhs')}
@@ -499,10 +929,30 @@ function DashboardView({
               <KpiCard
                 label={t('nhs.tracking.inReview.label')}
                 value={stats.in_review}
-                sub={t('nhs.tracking.inReview.sub')}
+                sub={
+                  stats.in_review > 0 && stats.in_review_avg_days != null
+                    ? t('nhs.tracking.inReview.aging').replace('{n}', String(stats.in_review_avg_days)) +
+                      (stats.in_review_over_sla > 0
+                        ? ' · ' +
+                          t('nhs.tracking.inReview.overSla')
+                            .replace('{m}', String(stats.in_review_over_sla))
+                            .replace('{sla}', String(stats.in_review_sla_days))
+                        : '')
+                    : t('nhs.tracking.inReview.sub')
+                }
+                subTone={stats.in_review_over_sla > 0 ? 'warn' : 'default'}
                 variant="amber"
                 icon={Clock}
-                onClick={() => onOpenList('envoye-nhs')}
+                onClick={() => onOpenList('in-review')}
+              />
+              <KpiCard
+                label={t('nhs.tracking.additionalInfo.label')}
+                value={stats.additional_info}
+                sub={t('nhs.tracking.additionalInfo.sub')}
+                subTone={stats.additional_info > 0 ? 'warn' : 'default'}
+                variant="amber"
+                icon={Mail}
+                onClick={() => onOpenList('additional-info')}
               />
               <KpiCard
                 label={t('nhs.tracking.accepted.label')}
@@ -510,7 +960,7 @@ function DashboardView({
                 sub={t('nhs.tracking.accepted.sub')}
                 variant="green"
                 icon={CheckCircle2}
-                onClick={() => onOpenList('envoye-nhs')}
+                onClick={() => onOpenList('accepted')}
               />
               <KpiCard
                 label={t('nhs.tracking.refused.label')}
@@ -518,7 +968,7 @@ function DashboardView({
                 sub={t('nhs.tracking.refused.sub')}
                 variant="red"
                 icon={XCircle}
-                onClick={() => onOpenList('envoye-nhs')}
+                onClick={() => onOpenList('refused')}
               />
             </div>
           </div>
@@ -569,6 +1019,11 @@ function DashboardView({
                 onClick={() => onOpenList('envoye-nhs')}
               />
             </div>
+            {stats.avg_days_to_submit != null && (
+              <p className="text-[11px] text-gray-500 mt-4 border-t border-gray-100 pt-2.5">
+                {t('nhs.pipeline.cycle').replace('{n}', String(stats.avg_days_to_submit))}
+              </p>
+            )}
           </div>
         </>
       )}
@@ -583,9 +1038,9 @@ function ListView({
 }: {
   t: (k: string) => string
   lang: 'fr' | 'en'
-  filter: PatientStatus | 'all'
+  filter: ListFilter
   onBack: () => void
-  onChangeFilter: (f: PatientStatus | 'all') => void
+  onChangeFilter: (f: ListFilter) => void
   onOpenPatient: (id: string) => void
 }) {
   const [patients, setPatients] = useState<NhsPatient[] | null>(null)
@@ -593,25 +1048,70 @@ function ListView({
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
 
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
+  const fetchPatients = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true)
     setError(null)
-    fetch('/api/nhs-patients', { cache: 'no-store' })
-      .then(async r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`)
-        return r.json() as Promise<{ patients: NhsPatient[] }>
-      })
-      .then(d => { if (!cancelled) setPatients(d.patients) })
-      .catch(e => { if (!cancelled) setError(String(e)) })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
+    try {
+      const r = await fetch('/api/nhs-patients', { cache: 'no-store' })
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      const d = (await r.json()) as { patients: NhsPatient[] }
+      setPatients(d.patients)
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      if (!opts?.silent) setLoading(false)
+    }
   }, [])
+
+  useEffect(() => {
+    fetchPatients()
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === 'visible') fetchPatients({ silent: true })
+    }, LIVE_REFRESH_MS)
+    const onFocus = () => {
+      if (document.visibilityState === 'visible') fetchPatients({ silent: true })
+    }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onFocus)
+    return () => {
+      clearInterval(intervalId)
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onFocus)
+    }
+  }, [fetchPatients])
 
   const locale = lang === 'fr' ? 'fr-FR' : 'en-GB'
 
+  const [submittingId, setSubmittingId] = useState<string | null>(null)
+  async function handleSubmit(p: NhsPatient) {
+    if (submittingId) return
+    setSubmittingId(p.id)
+    const ok = await runPatientAction(p.id, 'submit-nhs', t)
+    setSubmittingId(null)
+    if (ok) fetchPatients({ silent: true })
+  }
+
+  // Each filter maps to a predicate. The NHS sub-state filters key off nhs_status
+  // (set from Dr Nedelcu's mailbox); the clinic-doc filters key off the produced
+  // flags; everything else falls back to the patient status bucket.
+  const matchesFilter = (p: NhsPatient): boolean => {
+    switch (filter) {
+      case 'all':                   return true
+      case 'no-response':           return p.no_response
+      case 'in-review':             return p.nhs_status === 'in_review'
+      case 'additional-info':       return p.nhs_status === 'additional_info'
+      case 'accepted':              return p.nhs_status === 'accepted'
+      case 'refused':               return p.nhs_status === 'refused'
+      case 'clinic-medical-report': return !!p.clinic_docs?.medical_report
+      case 'clinic-undue-delay':    return !!p.clinic_docs?.undue_delay
+      case 'clinic-s2-provider':    return !!p.clinic_docs?.s2_provider
+      case 'clinic-estimate':       return !!p.clinic_docs?.estimate
+      default:                      return p.status === filter
+    }
+  }
+
   const filtered = (patients ?? []).filter(p => {
-    if (filter !== 'all' && p.status !== filter) return false
+    if (!matchesFilter(p)) return false
     if (search) {
       const s = search.toLowerCase()
       const hay = `${p.name ?? ''} ${p.email ?? ''} ${p.phone ?? ''}`.toLowerCase()
@@ -620,9 +1120,9 @@ function ListView({
     return true
   })
 
-  const filterButtons: Array<{ id: PatientStatus | 'all'; key: string }> = [
+  const filterButtons: Array<{ id: ListFilter; key: string }> = [
     { id: 'all',          key: 'nhs.list.filter.all' },
-    { id: 'sans-reponse', key: 'nhs.list.filter.escalation' },
+    { id: 'no-response',  key: 'nhs.list.filter.escalation' },
     { id: 'partiels',     key: 'nhs.list.filter.partial' },
     { id: 'complets',     key: 'nhs.list.filter.complete' },
     { id: 'envoye-nhs',   key: 'nhs.list.filter.sent' },
@@ -774,10 +1274,17 @@ function ListView({
                         </button>
                       )}
                       {p.status === 'complets' && (
-                        <button className="px-2.5 py-1 text-xs font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700">
+                        <button
+                          type="button"
+                          onClick={() => handleSubmit(p)}
+                          disabled={submittingId === p.id}
+                          className="px-2.5 py-1 text-xs font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700 inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {submittingId === p.id && <RefreshCw className="w-3 h-3 animate-spin" />}
                           {t('nhs.list.action.submit')}
                         </button>
                       )}
+                      <AssignToMenu patientId={p.id} t={t} onAssigned={() => fetchPatients({ silent: true })} />
                       <button
                         onClick={() => onOpenPatient(p.id)}
                         className="px-2.5 py-1 text-xs font-medium rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200"
@@ -804,28 +1311,47 @@ function DetailView({
   t: (k: string) => string
   lang: 'fr' | 'en'
   id: string
-  fromFilter: PatientStatus | 'all'
+  fromFilter: ListFilter
   onBackDashboard: () => void
   onBackList: () => void
 }) {
   const [detail, setDetail] = useState<NhsPatientDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [pendingAction, setPendingAction] = useState<PatientActionName | null>(null)
+  const [commFilter, setCommFilter] = useState<'all' | 'patient' | 'clinic' | 'nhs' | 'team'>('all')
+
+  const fetchDetail = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true)
+    setError(null)
+    try {
+      const r = await fetch(`/api/nhs-patients/${encodeURIComponent(id)}`, { cache: 'no-store' })
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      const d = (await r.json()) as NhsPatientDetail
+      setDetail(d)
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      if (!opts?.silent) setLoading(false)
+    }
+  }, [id])
 
   useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-    fetch(`/api/nhs-patients/${encodeURIComponent(id)}`, { cache: 'no-store' })
-      .then(async r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`)
-        return r.json() as Promise<NhsPatientDetail>
-      })
-      .then(d => { if (!cancelled) setDetail(d) })
-      .catch(e => { if (!cancelled) setError(String(e)) })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [id])
+    fetchDetail()
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') fetchDetail({ silent: true })
+    }, LIVE_REFRESH_MS)
+    const onFocus = () => {
+      if (document.visibilityState === 'visible') fetchDetail({ silent: true })
+    }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onFocus)
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onFocus)
+    }
+  }, [fetchDetail])
 
   const locale = lang === 'fr' ? 'fr-FR' : 'en-GB'
 
@@ -863,6 +1389,32 @@ function DetailView({
     : 0
   const docComplete = patient.docs_received >= patient.docs_required
 
+  async function handleAction(action: PatientActionName) {
+    if (pendingAction) return
+    setPendingAction(action)
+    const ok = await runPatientAction(id, action, t)
+    setPendingAction(null)
+    if (ok) fetchDetail({ silent: true })
+  }
+
+  // Communications history: filter by party, then group by calendar day so the
+  // log reads as a dated feed (time only on each row). `timeline` is already
+  // sorted newest-first, so same-day entries are adjacent.
+  const filteredComms =
+    commFilter === 'all' ? timeline : timeline.filter(e => e.party === commFilter)
+  const commGroups: Array<{ key: string; label: string; items: typeof timeline }> = []
+  for (const item of filteredComms) {
+    const key = item.date
+      ? new Date(item.date).toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' })
+      : '__earlier__'
+    const label = item.date
+      ? new Date(item.date).toLocaleDateString(locale, { day: 'numeric', month: 'long' })
+      : t('nhs.detail.comms.earlier')
+    const last = commGroups[commGroups.length - 1]
+    if (last && last.key === key) last.items.push(item)
+    else commGroups.push({ key, label, items: [item] })
+  }
+
   return (
     <>
       <Breadcrumb
@@ -898,9 +1450,24 @@ function DetailView({
                 </span>
               )}
             </div>
+            {(patient.qualification || patient.in_nhs_process) && (
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                {patient.qualification && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded-full bg-gray-100 text-gray-700 border border-gray-200">
+                    <Phone className="w-3 h-3" /> {t('nhs.detail.lastCall')} · {patient.qualification}
+                  </span>
+                )}
+                {patient.in_nhs_process && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                    {t('nhs.detail.inProcess')}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
         <div className="flex flex-col items-end gap-2">
+          <AssignToMenu patientId={id} t={t} onAssigned={() => fetchDetail({ silent: true })} />
           <span className={`inline-flex px-2.5 py-1 text-xs font-medium rounded-full border ${statusBadgeClass[patient.status]}`}>
             {t(`nhs.badge.${patient.status}`)}
           </span>
@@ -944,7 +1511,6 @@ function DetailView({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
         {/* Documents checklist */}
         <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">
@@ -970,27 +1536,26 @@ function DetailView({
               {docComplete ? t('nhs.detail.docs.statusComplete') : t('nhs.detail.docs.statusIncomplete')}
             </span>
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
             {documents.map(doc => {
-              const tag = !doc.required ? 'optional' : doc.received ? 'received' : 'pending'
-              const tagCls = tag === 'received'
-                ? 'bg-emerald-50 text-emerald-700'
-                : tag === 'optional'
-                  ? 'bg-amber-50 text-amber-700'
-                  : 'bg-gray-100 text-gray-600'
-              const iconCls = tag === 'received'
-                ? 'bg-emerald-100 text-emerald-700'
-                : tag === 'optional'
-                  ? 'bg-amber-100 text-amber-700'
-                  : 'bg-gray-200 text-gray-500'
+              // Signature docs (e.g. S2 Provider Declaration, Detailed Medical
+              // Estimate) aren't received from the patient — the clinic sends them
+              // out for signature and gets them back, so show that workflow's
+              // status. For patient docs, reflect the real received state first so
+              // an optional doc that arrived (bank statements) shows "Received".
+              const status =
+                doc.origin === 'signature'
+                  ? doc.received ? 'signed' : 'awaitingSignature'
+                  : doc.received ? 'received' : doc.required ? 'pending' : 'optional'
+              const s = docStatusStyle[status]
               return (
                 <div key={doc.key} className="flex items-center gap-2.5 p-2.5 rounded-lg border border-gray-200 bg-gray-50">
-                  <div className={`w-5 h-5 rounded flex items-center justify-center text-xs font-bold shrink-0 ${iconCls}`}>
-                    {tag === 'received' ? '✓' : tag === 'optional' ? '○' : '·'}
+                  <div className={`w-5 h-5 rounded flex items-center justify-center text-xs font-bold shrink-0 ${s.icon}`}>
+                    {s.glyph}
                   </div>
                   <span className="flex-1 text-xs text-gray-700">{t(`nhs.doc.${doc.key}`)}</span>
-                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${tagCls}`}>
-                    {t(`nhs.detail.docs.${tag}`)}
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${s.tag}`}>
+                    {t(`nhs.detail.docs.${status}`)}
                   </span>
                 </div>
               )
@@ -998,42 +1563,91 @@ function DetailView({
           </div>
         </div>
 
-        {/* Communications timeline */}
+        {/* Communications history */}
         <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">
-            {t('nhs.detail.comms.title')}
-          </p>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+              {t('nhs.detail.comms.title')}
+            </p>
+            {filteredComms.length > 0 && (
+              <span className="text-[11px] text-gray-400 tabular-nums">{filteredComms.length}</span>
+            )}
+          </div>
+
+          {/* Filter chips — also act as the party colour legend */}
+          <div className="flex flex-wrap items-center gap-1.5 mb-3">
+            <button
+              type="button"
+              onClick={() => setCommFilter('all')}
+              className={`px-2.5 py-1 text-[11px] font-medium rounded-full border transition-colors ${
+                commFilter === 'all'
+                  ? 'border-gray-300 bg-gray-100 text-gray-900'
+                  : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
+              }`}
+            >
+              {t('nhs.detail.comms.all')}
+            </button>
+            {COMM_PARTIES.map(p => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setCommFilter(p)}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-full border transition-colors ${
+                  commFilter === p
+                    ? 'border-gray-300 bg-gray-100 text-gray-900'
+                    : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${commPartyDot[p]}`} />
+                {t(`nhs.detail.comms.party.${p}`)}
+              </button>
+            ))}
+          </div>
+
           {timeline.length === 0 ? (
             <p className="text-xs text-gray-400">{t('nhs.detail.comms.empty')}</p>
+          ) : filteredComms.length === 0 ? (
+            <p className="text-xs text-gray-400">{t('nhs.detail.comms.emptyFilter')}</p>
           ) : (
-            <div className="space-y-2">
-              {timeline.map((item, i) => {
-                const dotColor = {
-                  call: 'bg-blue-500',
-                  email: 'bg-amber-500',
-                  whatsapp: 'bg-emerald-500',
-                  doc: 'bg-gray-500',
-                  response: 'bg-emerald-500',
-                }[item.kind]
-                return (
-                  <div key={i} className="flex gap-3 py-2 border-b border-gray-100 last:border-b-0 text-xs">
-                    <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${dotColor}`} />
-                    <div className="text-gray-400 whitespace-nowrap min-w-[90px]">
-                      {new Date(item.date).toLocaleString(locale, {
-                        day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
-                      })}
-                    </div>
-                    <div className="flex-1">
-                      <div className="font-medium text-gray-700">{t(item.title_key)}</div>
-                      {item.detail && <div className="text-gray-400 mt-0.5">{item.detail}</div>}
-                    </div>
+            <div className="max-h-[26rem] overflow-y-auto -mr-2 pr-2">
+              {commGroups.map((group, gi) => (
+                <div key={group.key} className={gi > 0 ? 'mt-3' : ''}>
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-1">
+                    {group.label}
                   </div>
-                )
-              })}
+                  {group.items.map((item, i) => {
+                    const Icon = commKindIcon[item.kind] ?? FileText
+                    const primary = item.title_key
+                      ? t(item.title_key).replace('{name}', item.name ?? '')
+                      : item.name ?? ''
+                    const countSuffix = item.count > 1 ? ` ×${item.count}` : ''
+                    const tooltip = `${primary}${countSuffix}${item.detail ? ' · ' + item.detail : ''}`
+                    return (
+                      <div
+                        key={i}
+                        className="flex items-center gap-2.5 py-1.5 px-2 -mx-2 rounded-lg hover:bg-gray-50 text-xs"
+                      >
+                        <Icon className={`w-3.5 h-3.5 shrink-0 ${commPartyText[item.party]}`} />
+                        <span className="shrink-0 w-[44px] text-gray-400 tabular-nums">
+                          {item.date
+                            ? new Date(item.date).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
+                            : ''}
+                        </span>
+                        <div className="flex-1 min-w-0 truncate" title={tooltip}>
+                          <span className="font-medium text-gray-700">{primary}{countSuffix}</span>
+                          {item.detail && <span className="text-gray-400">{' · '}{item.detail}</span>}
+                        </div>
+                        <span className={`shrink-0 inline-flex px-1.5 py-0.5 rounded-full text-[10px] font-medium ${commPartyChip[item.party]}`}>
+                          {t(`nhs.detail.comms.party.${item.party}`)}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              ))}
             </div>
           )}
         </div>
-      </div>
 
       {/* NHS S2 status pipeline */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
@@ -1069,17 +1683,38 @@ function DetailView({
           {t('nhs.detail.actions.title')}
         </p>
         <div className="flex flex-wrap gap-2">
-          <button className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 inline-flex items-center gap-1.5">
-            <Mail className="w-3 h-3" /> {t('nhs.detail.actions.relanceEmail')}
-          </button>
-          <button className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 inline-flex items-center gap-1.5">
-            <MessageSquare className="w-3 h-3" /> {t('nhs.detail.actions.relanceWhatsapp')}
+          <button
+            type="button"
+            onClick={() => handleAction('relance-email')}
+            disabled={pendingAction !== null}
+            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {pendingAction === 'relance-email'
+              ? <RefreshCw className="w-3 h-3 animate-spin" />
+              : <Mail className="w-3 h-3" />}
+            {t('nhs.detail.actions.relanceEmail')}
           </button>
           <button
-            disabled={!docComplete}
+            type="button"
+            onClick={() => handleAction('relance-whatsapp')}
+            disabled={pendingAction !== null}
+            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {pendingAction === 'relance-whatsapp'
+              ? <RefreshCw className="w-3 h-3 animate-spin" />
+              : <MessageSquare className="w-3 h-3" />}
+            {t('nhs.detail.actions.relanceWhatsapp')}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleAction('submit-nhs')}
+            disabled={!docComplete || pendingAction !== null}
             className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Send className="w-3 h-3" /> {t('nhs.detail.actions.submit')}
+            {pendingAction === 'submit-nhs'
+              ? <RefreshCw className="w-3 h-3 animate-spin" />
+              : <Send className="w-3 h-3" />}
+            {t('nhs.detail.actions.submit')}
           </button>
         </div>
       </div>
@@ -1089,13 +1724,8 @@ function DetailView({
         <div className="bg-red-50 border border-red-200 rounded-xl p-4">
           <p className="text-sm font-semibold text-red-700">{t('nhs.detail.escalation.title')}</p>
           <p className="text-xs text-red-600 mt-1 mb-3">{t('nhs.detail.escalation.desc')}</p>
-          <div className="flex flex-wrap gap-2">
-            <button className="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500 text-white hover:bg-amber-600 inline-flex items-center gap-1.5">
-              <User className="w-3 h-3" /> {t('nhs.detail.escalation.assignRain')}
-            </button>
-            <button className="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500 text-white hover:bg-amber-600 inline-flex items-center gap-1.5">
-              <User className="w-3 h-3" /> {t('nhs.detail.escalation.assignSummer')}
-            </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <AssignToMenu patientId={id} t={t} onAssigned={() => fetchDetail({ silent: true })} variant="solid" />
             <button className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white text-red-700 border border-red-200 hover:bg-red-100">
               {t('nhs.detail.escalation.note')}
             </button>

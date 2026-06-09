@@ -68,6 +68,21 @@ export async function createAssignment(input: {
   return error ? { ok: false, error: error.message } : { ok: true }
 }
 
+// Close any open assignment(s) for a lead (the "unassign" action). The lead then
+// drops out of the coordinator queues, which only show open/pending assignments.
+export async function unassignLead(
+  leadId: string
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = getSupabaseServer()
+  if (!supabase) return { ok: false, error: 'Supabase non configuré' }
+  const { error } = await supabase
+    .from('dashboard_assignments')
+    .update({ status: 'closed' })
+    .eq('lead_id', leadId)
+    .in('status', ['open', 'pending'])
+  return error ? { ok: false, error: error.message } : { ok: true }
+}
+
 export async function resolveError(
   id: string
 ): Promise<{ ok: boolean; error?: string }> {

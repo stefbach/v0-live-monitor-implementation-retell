@@ -10,18 +10,23 @@ function getSupabase() {
 
 export const dynamic = 'force-dynamic'
 
+// `origin` captures how each document is obtained, which drives the status label
+// shown in the checklist:
+//   patient   — supplied by the patient (Pending → Received)
+//   signature — produced by the clinic and sent out for signature, then returned
+//               (Awaiting signature → Signed); NOT received from the patient
 export const NHS_DOCS = [
-  { key: 'doc_nhs_s2_form',              required: true },
-  { key: 'doc_s2_provider_declaration',  required: true },
-  { key: 'doc_cpam_certificate',         required: true },
-  { key: 'doc_clinical_justification_gp', required: true },
-  { key: 'doc_medical_report',            required: true },
-  { key: 'doc_undue_delay_letter',        required: true },
-  { key: 'doc_patient_authorisation',     required: true },
-  { key: 'doc_identity_document',         required: true },
-  { key: 'doc_proof_of_residence',        required: true },
-  { key: 'doc_bank_statements',           required: false },
-  { key: 'doc_detailed_medical_estimate', required: true },
+  { key: 'doc_nhs_s2_form',               required: true,  origin: 'patient'   },
+  { key: 'doc_s2_provider_declaration',   required: true,  origin: 'signature' },
+  { key: 'doc_cpam_certificate',          required: true,  origin: 'patient'   },
+  { key: 'doc_clinical_justification_gp', required: true,  origin: 'patient'   },
+  { key: 'doc_medical_report',            required: true,  origin: 'patient'   },
+  { key: 'doc_undue_delay_letter',        required: true,  origin: 'patient'   },
+  { key: 'doc_patient_authorisation',     required: true,  origin: 'patient'   },
+  { key: 'doc_identity_document',         required: true,  origin: 'patient'   },
+  { key: 'doc_proof_of_residence',        required: true,  origin: 'patient'   },
+  { key: 'doc_bank_statements',           required: false, origin: 'patient'   },
+  { key: 'doc_detailed_medical_estimate', required: true,  origin: 'signature' },
 ] as const
 
 type DossierRow = Record<string, unknown> & {
@@ -64,7 +69,17 @@ export interface NhsPatient {
   last_activity: string | null
   nhs_status: string | null
   escalade: boolean
+  no_response: boolean
   bank_exception: boolean
+  // Clinic-produced documents (true once produced / signed by the clinic). Mirrors
+  // the four "documents to be produced by the clinic" cards, so each card can drill
+  // into the patients it counts.
+  clinic_docs: {
+    medical_report: boolean
+    undue_delay: boolean
+    s2_provider: boolean
+    estimate: boolean
+  }
 }
 
 function ageFromDob(dob: string | null): number | null {
@@ -146,7 +161,33 @@ export function buildPatient(d: DossierRow, l: LeadRow, threeDaysAgo: Date): Nhs
     last_activity: lastActivity,
     nhs_status: d.nhs_submission_status,
     escalade: status === 'sans-reponse',
+    // Contacted (email / WhatsApp / call) but no reply yet and no documents in.
+    // Broader than the 3-day escalation flag — used by the "No response" filter.
+    no_response:
+      (!!l.email_sent || !!l.whatsapp_sent || l.last_call_datetime != null) &&
+      !l.last_response_date &&
+      received === 0,
     bank_exception: !!d.bank_statement_exception,
+    clinic_docs: {
+      medical_report: d['doc_medical_report'] === 'received',
+      undue_delay: d['doc_undue_delay_letter'] === 'received',
+      s2_provider: d['doc_s2_provider_declaration'] === 'received',
+      estimate: d['doc_detailed_medical_estimate'] === 'received',
+    },
+  }
+}
+
+// Synthetic empty dossier for an emailed lead that has no dossier row yet, so
+// such patients still appear (as "no document") and reconcile with the overview.
+export function emptyDossier(leadId: string): DossierRow {
+  return {
+    id: leadId,
+    lead_id: leadId,
+    dossier_status: null,
+    submission_ready: null,
+    nhs_submission_status: null,
+    bank_statement_exception: null,
+    last_analysed_at: null,
   }
 }
 
@@ -168,22 +209,28 @@ export async function GET() {
           'id, nom, email, numero_telephone, patient_dob, email_sent, whatsapp_sent,' +
             ' relance_email_sent, relance_whatsapp_sent, relance_email_date,' +
             ' last_response_date, last_call_datetime, last_updated',
-        ),
+        )
+        .not('email', 'is', null)
+        .is('raison_ne_pas_rappeler', null),
     ])
 
     const dossiers = (dossiersRes.data ?? []) as DossierRow[]
     const leads = (leadsRes.data ?? []) as LeadRow[]
-    const leadById = new Map(leads.map(l => [l.id, l]))
+    const dossierByLead = new Map(
+      dossiers.filter(d => d.lead_id != null).map(d => [d.lead_id as string, d]),
+    )
 
     const now = new Date()
     const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000)
 
+    // Build the list over the emailed-lead population so it reconciles with the
+    // overview file-status counts: an emailed lead with no dossier (or an empty
+    // one) is shown as a "no document" patient rather than being dropped.
     const patients: NhsPatient[] = []
-    for (const d of dossiers) {
-      if (!d.lead_id) continue
-      const lead = leadById.get(d.lead_id)
-      if (!lead) continue
-      patients.push(buildPatient(d, lead, threeDaysAgo))
+    for (const l of leads) {
+      if (!l.email_sent) continue
+      const d = dossierByLead.get(l.id) ?? emptyDossier(l.id)
+      patients.push(buildPatient(d, l, threeDaysAgo))
     }
 
     patients.sort((a, b) => {
