@@ -5,6 +5,7 @@ import { PhoneIncoming, PhoneCall, PhoneOff, Clock, ChevronDown, ChevronUp } fro
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { AssignMenu } from './assign-menu'
 import { useRdvStore } from '@/lib/stores/rdv-store'
 import { effectiveQualKey } from '@/lib/rdv'
 import { QUAL_META } from '@/lib/qualifications'
@@ -102,24 +103,28 @@ export function InboundCallsPanel({ calls, onSelectCall, isLoading }: Props) {
           ) : (
             <div className="space-y-1 max-h-[480px] overflow-y-auto pr-1">
               {/* Column header */}
-              <div className="grid grid-cols-[20px_72px_130px_1fr_56px_130px] gap-2 px-3 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground border-b border-border/40 mb-1">
-                <span />
-                <span>Date</span>
-                <span>Numéro</span>
-                <span>Lead</span>
-                <span>Durée</span>
-                <span>Qualification</span>
+              <div className="flex items-center gap-1">
+                <div className="min-w-0 flex-1 grid grid-cols-[20px_72px_130px_1fr_56px_130px] gap-2 px-3 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground border-b border-border/40 mb-1">
+                  <span />
+                  <span>Date</span>
+                  <span>Numéro</span>
+                  <span>Lead</span>
+                  <span>Durée</span>
+                  <span>Qualification</span>
+                </div>
+                <span className="w-[92px] shrink-0" />
               </div>
 
               {inbound.map((call) => {
                 const qualKey = effectiveQualKey(call, confirmedRdvLeadKeys)
                 const meta = QUAL_META[qualKey]
                 const { date, time } = formatDateTime(call.startTime)
+                const leadKey = call.meta?.leadId ?? call.lead?.id
                 return (
+                  <div key={call.callId} className="flex items-center gap-1">
                   <button
-                    key={call.callId}
                     onClick={() => onSelectCall(call)}
-                    className="w-full grid grid-cols-[20px_72px_130px_1fr_56px_130px] gap-2 items-center rounded-md border border-border/30 px-3 py-2 text-left text-sm hover:bg-muted/60 transition-colors"
+                    className="min-w-0 flex-1 grid grid-cols-[20px_72px_130px_1fr_56px_130px] gap-2 items-center rounded-md border border-border/30 px-3 py-2 text-left text-sm hover:bg-muted/60 transition-colors"
                   >
                     {/* Answered icon */}
                     <span className="flex items-center justify-center">
@@ -160,6 +165,10 @@ export function InboundCallsPanel({ calls, onSelectCall, isLoading }: Props) {
                       </Badge>
                     </span>
                   </button>
+                  <div className="flex w-[92px] shrink-0 justify-end">
+                    {leadKey && <AssignMenu leadId={leadKey} size="xs" />}
+                  </div>
+                  </div>
                 )
               })}
             </div>

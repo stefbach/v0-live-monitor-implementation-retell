@@ -12,11 +12,9 @@ import {
   Timer,
   Users,
   UserPlus,
-  Loader2,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ApiStatus } from './api-status'
@@ -26,6 +24,7 @@ import { HandoffDetailSheet } from './handoff-detail-sheet'
 import { DurationHistogram } from '../duration-histogram'
 import { VerbatimPanel } from '../verbatim-panel'
 import { InboundCallsPanel } from '../inbound-calls-panel'
+import { AssignMenu } from '../assign-menu'
 import { useT } from '@/lib/hooks/use-t'
 import { formatBmi } from '@/lib/bmi'
 import {
@@ -456,22 +455,6 @@ function HandoffSection({
   onOpenDetail: (c: ReturnType<typeof computeHandoffCandidates>[number]) => void
 }) {
   const { t } = useT()
-  const [busy, setBusy] = useState<string | null>(null)
-  const [done, setDone] = useState<Record<string, string>>({})
-
-  const assign = async (leadId: string, to: string, reason: string) => {
-    setBusy(leadId + to)
-    try {
-      const res = await fetch('/api/dashboard/assignments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leadId, assignedTo: to, reason, assignedBy: 'dashboard' }),
-      })
-      if (res.ok) setDone((d) => ({ ...d, [leadId]: to }))
-    } finally {
-      setBusy(null)
-    }
-  }
 
   return (
     <Card>
@@ -519,39 +502,9 @@ function HandoffSection({
                       )}
                     </div>
                   </div>
-                  {done[c.leadId] ? (
-                    <Badge className="bg-emerald-500 text-white">
-                      {t('director.assign.assigned').replace('{to}', done[c.leadId])}
-                    </Badge>
-                  ) : (
-                    <div
-                      className="flex gap-2"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={busy === c.leadId + 'Rain'}
-                        onClick={() => assign(c.leadId, 'Rain', c.reasons.join(' ; '))}
-                      >
-                        {busy === c.leadId + 'Rain' && (
-                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                        )}
-                        {t('director.assign.rain')}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={busy === c.leadId + 'Summer'}
-                        onClick={() => assign(c.leadId, 'Summer', c.reasons.join(' ; '))}
-                      >
-                        {busy === c.leadId + 'Summer' && (
-                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                        )}
-                        {t('director.assign.summer')}
-                      </Button>
-                    </div>
-                  )}
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <AssignMenu leadId={c.leadId} />
+                  </div>
                 </div>
               )
             })}
