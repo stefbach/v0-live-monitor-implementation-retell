@@ -18,7 +18,6 @@ import {
   Scale,
   AlertOctagon,
   UserPlus,
-  Loader2,
 } from 'lucide-react'
 import {
   Sheet,
@@ -28,7 +27,6 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AudioPlayer } from './audio-player'
 import { TranscriptViewer } from './transcript-viewer'
@@ -39,6 +37,7 @@ import { useRdvStore } from '@/lib/stores/rdv-store'
 import { QUAL_META } from '@/lib/qualifications'
 import { formatBmi } from '@/lib/bmi'
 import { DirectionIcon } from './direction-indicator'
+import { AssignMenu } from './assign-menu'
 import type { CallLogEnriched, Lead, Qualification } from '@/lib/types'
 
 interface CallDetailSheetProps {
@@ -178,6 +177,16 @@ export function CallDetailSheet({
                 </Badge>
               )}
             </div>
+
+            {/* Confier à un humain — kept at the top so it's always reachable */}
+            {(call.meta?.leadId || call.lead?.id) && (
+              <section className="flex items-center justify-between gap-2 rounded-lg border bg-muted/20 p-3">
+                <span className="text-sm font-medium flex items-center gap-1.5">
+                  <UserPlus className="h-4 w-4 text-violet-500" /> Confier à un humain
+                </span>
+                <AssignMenu leadId={(call.meta?.leadId ?? call.lead?.id) as string} />
+              </section>
+            )}
 
             {/* Patient block */}
             {(call.lead || fullLead) && (
@@ -354,14 +363,6 @@ export function CallDetailSheet({
               </section>
             )}
 
-            {/* Confier à un humain */}
-            {(call.meta?.leadId || call.lead?.id) && (
-              <HandoffButtons
-                leadId={(call.meta?.leadId ?? call.lead?.id) as string}
-                leadName={call.lead?.nom ?? null}
-              />
-            )}
-
             {call.summary && (
               <section className="space-y-2">
                 <p className="text-sm font-medium">Résumé</p>
@@ -439,70 +440,6 @@ function DataCard({
         {value}
       </p>
     </div>
-  )
-}
-
-function HandoffButtons({
-  leadId,
-  leadName,
-}: {
-  leadId: string
-  leadName: string | null
-}) {
-  const [busy, setBusy] = useState<string | null>(null)
-  const [done, setDone] = useState<string | null>(null)
-
-  const assign = async (to: string) => {
-    setBusy(to)
-    try {
-      const res = await fetch('/api/dashboard/assignments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          leadId,
-          assignedTo: to,
-          reason: 'Confié depuis la fiche appel',
-          assignedBy: 'dashboard',
-        }),
-      })
-      if (res.ok) setDone(to)
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  return (
-    <section className="space-y-2">
-      <p className="text-sm font-medium flex items-center gap-1">
-        <UserPlus className="h-3.5 w-3.5 text-violet-500" /> Confier à un humain
-      </p>
-      {done ? (
-        <Badge className="bg-emerald-500 text-white">
-          {leadName ?? 'Lead'} confié à {done}
-        </Badge>
-      ) : (
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!!busy}
-            onClick={() => assign('Rain')}
-          >
-            {busy === 'Rain' && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
-            Confier à Rain
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!!busy}
-            onClick={() => assign('Summer')}
-          >
-            {busy === 'Summer' && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
-            Confier à Summer
-          </Button>
-        </div>
-      )}
-    </section>
   )
 }
 
