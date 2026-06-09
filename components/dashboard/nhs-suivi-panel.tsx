@@ -4,11 +4,11 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   RefreshCw, AlertTriangle, CheckCircle2, Mail, MessageSquare,
   FileText, Send, Clock, XCircle, ChevronRight, ChevronDown, TrendingUp,
-  ArrowLeft, Search, Phone, AtSign, Calendar, Hourglass, User,
+  ArrowLeft, Search, Phone, AtSign, Calendar, Hourglass, User, X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
-  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 import { useT } from '@/lib/hooks/use-t'
 
@@ -184,20 +184,20 @@ function AssignToMenu({
   onAssigned?: () => void
   variant?: 'compact' | 'solid'
 }) {
-  const [busy, setBusy] = useState<CoordinatorName | null>(null)
+  const [busy, setBusy] = useState<CoordinatorName | 'unassign' | null>(null)
 
-  async function assign(coordinator: CoordinatorName) {
+  async function post(body: Record<string, unknown>, okMessage: string, key: CoordinatorName | 'unassign') {
     if (busy) return
-    setBusy(coordinator)
+    setBusy(key)
     try {
       const res = await fetch(`/api/nhs-patients/${encodeURIComponent(patientId)}/assign`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ coordinator }),
+        body: JSON.stringify(body),
       })
       const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
       if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`)
-      toast.success(t('nhs.toast.assigned').replace('{name}', coordinator))
+      toast.success(okMessage)
       onAssigned?.()
     } catch (e) {
       toast.error(t('nhs.toast.error'), { description: e instanceof Error ? e.message : String(e) })
@@ -205,6 +205,9 @@ function AssignToMenu({
       setBusy(null)
     }
   }
+  const assign = (c: CoordinatorName) =>
+    post({ coordinator: c }, t('nhs.toast.assigned').replace('{name}', c), c)
+  const unassign = () => post({ action: 'unassign' }, t('nhs.toast.unassigned'), 'unassign')
 
   const triggerCls =
     variant === 'solid'
@@ -232,6 +235,13 @@ function AssignToMenu({
             {c}
           </DropdownMenuItem>
         ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onSelect={() => unassign()}
+          className="cursor-pointer gap-2 text-red-600 focus:text-red-600"
+        >
+          <X className="w-3.5 h-3.5" /> {t('nhs.assign.unassign')}
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   )

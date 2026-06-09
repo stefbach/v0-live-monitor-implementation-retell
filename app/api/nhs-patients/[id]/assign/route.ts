@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { unassignLead } from '@/lib/dashboard'
 
 function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -26,10 +27,10 @@ export async function POST(
     const params = await (ctx as { params: Promise<{ id: string }> }).params
     const id = params.id
 
-    const body = (await req.json().catch(() => ({}))) as { coordinator?: string; reason?: string }
-    const coordinator = body.coordinator
-    if (!coordinator || !COORDINATORS.includes(coordinator as Coordinator)) {
-      return NextResponse.json({ ok: false, error: 'Unknown coordinator' }, { status: 400 })
+    const body = (await req.json().catch(() => ({}))) as {
+      coordinator?: string
+      reason?: string
+      action?: string
     }
 
     const sb = getSupabase()
@@ -41,6 +42,17 @@ export async function POST(
       .eq('id', id)
       .maybeSingle()
     const leadId = (dossier as { lead_id: string | null } | null)?.lead_id ?? id
+
+    // Unassign: close the lead's open assignment(s).
+    if (body.action === 'unassign') {
+      const res = await unassignLead(leadId)
+      return NextResponse.json({ ok: res.ok, error: res.error }, { status: res.ok ? 200 : 500 })
+    }
+
+    const coordinator = body.coordinator
+    if (!coordinator || !COORDINATORS.includes(coordinator as Coordinator)) {
+      return NextResponse.json({ ok: false, error: 'Unknown coordinator' }, { status: 400 })
+    }
 
     const { data: lead, error: lErr } = await sb
       .from('leads_rdv')
